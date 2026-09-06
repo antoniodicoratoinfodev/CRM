@@ -27,30 +27,30 @@
             <Label text="WORKSPACE" styleClass="nav-section-label"/>
             <VBox fx:id="sidebarContainer" spacing="5" VBox.vgrow="ALWAYS">
                 <Button fx:id="sideHomeBtn" text="Home" onAction="#handleNavigation" styleClass="sidebar-button, sidebar-button-active">
-                    <graphic><FontIcon iconLiteral="fas-home" iconSize="16" styleClass="nav-icon"/></graphic>
+                    <graphic><StackPane minWidth="18" prefWidth="18" maxWidth="18"><FontIcon iconLiteral="fas-home" iconSize="16" styleClass="nav-icon"/></StackPane></graphic>
                 </Button>
                 <Button fx:id="sideDashboardBtn" text="Dashboard" onAction="#handleNavigation" styleClass="sidebar-button">
-                    <graphic><FontIcon iconLiteral="fas-th-large" iconSize="16" styleClass="nav-icon"/></graphic>
+                    <graphic><StackPane minWidth="18" prefWidth="18" maxWidth="18"><FontIcon iconLiteral="fas-th-large" iconSize="16" styleClass="nav-icon"/></StackPane></graphic>
                 </Button>
                 <Button fx:id="sideContactsBtn" text="Contacts" onAction="#handleNavigation" styleClass="sidebar-button">
-                    <graphic><FontIcon iconLiteral="fas-user-friends" iconSize="16" styleClass="nav-icon"/></graphic>
+                    <graphic><StackPane minWidth="18" prefWidth="18" maxWidth="18"><FontIcon iconLiteral="fas-user-friends" iconSize="16" styleClass="nav-icon"/></StackPane></graphic>
                 </Button>
                 <Button fx:id="sideCalendarBtn" text="Calendar" onAction="#handleNavigation" styleClass="sidebar-button">
-                    <graphic><FontIcon iconLiteral="fas-calendar-alt" iconSize="16" styleClass="nav-icon"/></graphic>
+                    <graphic><StackPane minWidth="18" prefWidth="18" maxWidth="18"><FontIcon iconLiteral="fas-calendar-alt" iconSize="16" styleClass="nav-icon"/></StackPane></graphic>
                 </Button>
                 <Button fx:id="sideTasksBtn" text="Tasks" onAction="#handleNavigation" styleClass="sidebar-button">
-                    <graphic><FontIcon iconLiteral="fas-tasks" iconSize="16" styleClass="nav-icon"/></graphic>
+                    <graphic><StackPane minWidth="18" prefWidth="18" maxWidth="18"><FontIcon iconLiteral="fas-tasks" iconSize="16" styleClass="nav-icon"/></StackPane></graphic>
                 </Button>
                 <Button fx:id="sideNotesBtn" text="Notes" onAction="#handleNavigation" styleClass="sidebar-button">
-                    <graphic><FontIcon iconLiteral="fas-sticky-note" iconSize="16" styleClass="nav-icon"/></graphic>
+                    <graphic><StackPane minWidth="18" prefWidth="18" maxWidth="18"><FontIcon iconLiteral="fas-sticky-note" iconSize="16" styleClass="nav-icon"/></StackPane></graphic>
                 </Button>
                 <Region VBox.vgrow="ALWAYS"/>
                 <Separator styleClass="nav-separator"/>
                 <Button fx:id="themeToggleBtn" text="Change theme" onAction="#handleThemeToggle" styleClass="sidebar-button">
-                    <graphic><FontIcon fx:id="themeToggleIcon" iconLiteral="fas-moon" iconSize="16" styleClass="nav-icon"/></graphic>
+                    <graphic><StackPane minWidth="18" prefWidth="18" maxWidth="18"><FontIcon fx:id="themeToggleIcon" iconLiteral="fas-moon" iconSize="16" styleClass="nav-icon"/></StackPane></graphic>
                 </Button>
                 <Button fx:id="sideSettingsBtn" text="Settings" onAction="#handleNavigation" styleClass="sidebar-button">
-                    <graphic><FontIcon iconLiteral="fas-cog" iconSize="16" styleClass="nav-icon"/></graphic>
+                    <graphic><StackPane minWidth="18" prefWidth="18" maxWidth="18"><FontIcon iconLiteral="fas-cog" iconSize="16" styleClass="nav-icon"/></StackPane></graphic>
                 </Button>
             </VBox>
         </VBox>

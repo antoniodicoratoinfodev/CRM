@@ -1,0 +1,4 @@
+# Gli script di shell devono restare con terminatori LF: con CRLF Git Bash su
+# Windows non riesce a eseguirli e fallisce con "bad interpreter" oppure con
+# "command not found" sul ritorno a capo finale di ogni riga.
+*.sh text eol=lf

@@ -485,19 +485,14 @@ If Maven selects a different JDK, update `JAVA_HOME` before building or running 
 
 ## Running the Application
 
-From the Maven module:
-
-```bash
-cd VoidReach-CRM-Final-No-FatJar
-mvn clean javafx:run
-```
-
-On macOS or Linux, the helper script runs `mvn javafx:run` without the `clean` phase, reusing the previous build output:
+On macOS, Linux, or Windows (from Git Bash), the helper script compiles the module and launches the application:
 
 ```bash
 cd VoidReach-CRM-Final-No-FatJar
 ./run.sh
 ```
+
+The script detects the platform classifier and the classpath separator, selects a JDK that satisfies `maven.compiler.release` (preferring `JAVA_HOME` over the `java` found on the `PATH`), builds the JavaFX module path from the resolved dependencies, and starts `com.crm.app.AppLauncher`. It replaces `mvn javafx:run`, which fails on JDK 26: `javafx.web` requires `jdk.jsobject`, that module is no longer part of the JDK, and the javafx-maven-plugin places only artifacts named `javafx-*` on the module path, so the replacement `org.openjfx:jdk-jsobject` artifact never reaches it.
 
 For IntelliJ IDEA, import `VoidReach-CRM-Final-No-FatJar/pom.xml` as a Maven project and run `com.crm.app.AppLauncher`.
 

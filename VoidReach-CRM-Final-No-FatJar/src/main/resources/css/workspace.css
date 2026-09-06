@@ -56,6 +56,165 @@
 .dialog-pane .form-error { -fx-text-fill: -vr-danger; }
 
 .dialog-pane .text-area .content { -fx-background-color: -vr-raised; -fx-background-radius: 6; }
+
+/* Task and contact dialogs share spacing, surfaces and action hierarchy. */
+.dialog-pane.detail-dialog {
+    -fx-padding: 0;
+    -fx-background-color: -vr-surface;
+    -fx-border-color: -vr-border;
+    -fx-border-width: 1;
+    -fx-background-radius: 0;
+    -fx-border-radius: 0;
+}
+.detail-dialog > .content { -fx-padding: 0; }
+.detail-dialog-header {
+    -fx-padding: 22 24;
+    -fx-background-color: -vr-surface;
+    -fx-border-color: -vr-border;
+    -fx-border-width: 0 0 1 0;
+}
+.detail-dialog-mark {
+    -fx-min-width: 44; -fx-pref-width: 44; -fx-max-width: 44;
+    -fx-min-height: 44; -fx-pref-height: 44; -fx-max-height: 44;
+    -fx-background-color: -vr-accent-soft;
+    -fx-background-radius: 12;
+}
+.detail-dialog-mark .detail-icon { -fx-icon-color: -vr-accent; -fx-icon-size: 19; }
+.detail-icon { -fx-icon-color: -vr-muted; }
+.detail-dialog .detail-dialog-subtitle, .detail-dialog .field-caption,
+.detail-dialog .section-subtitle, .detail-dialog .detail-record-subtitle,
+.detail-dialog .detail-empty-copy, .detail-dialog .contact-channel-caption { -fx-text-fill: -vr-muted; }
+.detail-dialog .form-error { -fx-text-fill: -vr-danger; }
+.detail-scroll, .detail-scroll > .viewport {
+    -fx-background: -vr-canvas;
+    -fx-background-color: -vr-canvas;
+    -fx-border-width: 0;
+    -fx-padding: 0;
+    -fx-effect: null;
+}
+.detail-dialog .event-editor, .detail-dialog .contact-profile { -fx-padding: 20 24; -fx-background-color: -vr-canvas; }
+.detail-section, .contact-channel {
+    -fx-padding: 16;
+    -fx-background-color: -vr-surface;
+    -fx-background-radius: 10;
+    -fx-border-color: -vr-border;
+    -fx-border-radius: 10;
+}
+.detail-dialog .text-field, .detail-dialog .text-area, .detail-dialog .combo-box,
+.detail-dialog .date-picker, .detail-dialog .spinner {
+    -fx-background-color: -vr-raised;
+    -fx-background-insets: 0;
+    -fx-background-radius: 7;
+    -fx-border-color: -vr-border;
+    -fx-border-radius: 7;
+    -fx-border-width: 1;
+    -fx-text-fill: -vr-text;
+    -fx-prompt-text-fill: -vr-muted;
+    -fx-min-height: 36;
+}
+.detail-dialog .text-field { -fx-padding: 8 10; }
+.detail-dialog .text-field.event-editor-title { -fx-min-height: 48; -fx-padding: 10 12; -fx-background-color: -vr-surface; }
+.detail-dialog .combo-box .list-cell { -fx-text-fill: -vr-text; -fx-padding: 7 10; -fx-background-color: transparent; }
+.detail-dialog .combo-box-popup .list-cell { -fx-background-color: -vr-surface; }
+.detail-dialog .combo-box-popup .list-cell:filled:hover,
+.detail-dialog .combo-box-popup .list-cell:filled:selected { -fx-background-color: -vr-accent-soft; }
+.detail-dialog .combo-box .arrow, .detail-dialog .date-picker > .arrow-button > .arrow { -fx-background-color: -vr-muted; }
+.detail-dialog .date-picker > .text-field, .detail-dialog .spinner > .text-field {
+    -fx-border-width: 0; -fx-background-color: transparent; -fx-min-height: 34; -fx-padding: 7 8;
+}
+.detail-dialog .date-picker > .arrow-button { -fx-background-color: transparent; -fx-padding: 0 8; }
+.detail-dialog .spinner > .increment-arrow-button, .detail-dialog .spinner > .decrement-arrow-button {
+    -fx-background-color: transparent; -fx-background-insets: 0;
+    -fx-border-color: -vr-border; -fx-border-width: 0 0 0 1; -fx-padding: 4 7;
+}
+.detail-dialog .spinner > .increment-arrow-button:hover, .detail-dialog .spinner > .decrement-arrow-button:hover { -fx-background-color: -vr-hover; }
+.detail-dialog .spinner .increment-arrow, .detail-dialog .spinner .decrement-arrow { -fx-background-color: -vr-muted; }
+.detail-dialog .list-view {
+    -fx-background-color: -vr-raised; -fx-background-insets: 0; -fx-background-radius: 7;
+    -fx-border-color: -vr-border; -fx-border-radius: 7; -fx-padding: 4;
+}
+.detail-dialog .list-view .list-cell { -fx-background-color: transparent; -fx-text-fill: -vr-text; -fx-padding: 8; }
+.detail-dialog .list-view .list-cell:filled:hover, .detail-dialog .list-view .list-cell:filled:selected { -fx-background-color: -vr-accent-soft; -fx-background-radius: 4; }
+.detail-dialog .list-view:focused { -fx-border-color: -vr-accent; }
+.detail-dialog .check-box { -fx-text-fill: -vr-text; }
+.detail-dialog .check-box .box {
+    -fx-background-color: -vr-surface; -fx-background-insets: 0; -fx-background-radius: 4;
+    -fx-border-color: -vr-border; -fx-border-radius: 4; -fx-padding: 3;
+}
+.detail-dialog .check-box:selected .box { -fx-background-color: -vr-primary; -fx-border-color: -vr-primary; }
+.detail-dialog .check-box:selected .mark { -fx-background-color: white; }
+.detail-dialog .check-box:focused .box { -fx-border-color: -vr-accent; }
+.detail-dialog .text-area { -fx-padding: 0; }
+.detail-dialog .text-area .content { -fx-padding: 10 12; }
+.detail-dialog .text-field:focused, .detail-dialog .text-area:focused,
+.detail-dialog .combo-box:focused, .detail-dialog .date-picker:focused,
+.detail-dialog .spinner:focused { -fx-border-color: -vr-accent; }
+.detail-dialog .date-picker > .text-field:focused { -fx-background-color: -vr-accent-soft; }
+.detail-dialog .button {
+    -fx-background-color: -vr-surface;
+    -fx-text-fill: -vr-text;
+    -fx-border-color: -vr-border;
+    -fx-background-radius: 7;
+    -fx-border-radius: 7;
+    -fx-border-width: 1;
+    -fx-min-height: 36;
+    -fx-padding: 8 14;
+    -fx-graphic-text-gap: 8;
+    -fx-cursor: hand;
+    -fx-effect: null;
+}
+.detail-dialog .button:hover { -fx-background-color: -vr-hover; -fx-border-color: -vr-muted; }
+.detail-dialog .button:default, .detail-dialog .button.btn-primary {
+    -fx-background-color: -vr-primary; -fx-border-color: -vr-primary; -fx-text-fill: white;
+}
+.detail-dialog .button:default:hover, .detail-dialog .button.btn-primary:hover { -fx-background-color: -vr-primary-hover; -fx-border-color: -vr-primary-hover; }
+.detail-dialog .btn-primary .detail-icon { -fx-icon-color: white; }
+.detail-dialog .button.danger-button { -fx-background-color: transparent; -fx-border-color: transparent; -fx-text-fill: -vr-danger; }
+.detail-dialog .button.danger-button:hover { -fx-background-color: -vr-hover; -fx-border-color: -vr-danger; }
+.detail-dialog .button.text-button { -fx-background-color: transparent; -fx-border-color: transparent; -fx-text-fill: -vr-accent; }
+.detail-dialog .button.text-button:hover { -fx-background-color: -vr-accent-soft; }
+.detail-dialog .button:focused { -fx-border-color: -vr-accent; }
+.detail-dialog > .button-bar {
+    -fx-padding: 16 24;
+    -fx-background-color: -vr-surface;
+    -fx-border-color: -vr-border;
+    -fx-border-width: 1 0 0 0;
+}
+.detail-dialog .detail-disclosure > .title { -fx-padding: 13 14; -fx-background-color: -vr-surface; -fx-background-radius: 8; }
+.detail-dialog .detail-disclosure > .content { -fx-padding: 14; -fx-border-color: -vr-border; -fx-background-color: -vr-surface; }
+.detail-dialog .contact-profile-initials {
+    -fx-min-width: 56; -fx-pref-width: 56; -fx-max-width: 56;
+    -fx-min-height: 56; -fx-pref-height: 56; -fx-max-height: 56;
+    -fx-background-color: -vr-accent-soft; -fx-text-fill: -vr-accent; -fx-background-radius: 18;
+}
+.detail-dialog .contact-profile-badge, .detail-dialog .detail-count {
+    -fx-padding: 3 8; -fx-background-radius: 12;
+    -fx-background-color: -vr-accent-soft; -fx-text-fill: -vr-accent;
+}
+.contact-profile-tabs > .tab-header-area { -fx-padding: 0; }
+.contact-profile-tabs > .tab-header-area > .tab-header-background { -fx-background-color: transparent; }
+.contact-profile-tabs > .tab-header-area > .headers-region > .tab {
+    -fx-padding: 11 12; -fx-background-color: transparent;
+    -fx-border-color: -vr-border; -fx-border-width: 0 0 2 0;
+    -fx-background-radius: 0; -fx-focus-color: transparent; -fx-faint-focus-color: transparent;
+}
+.contact-profile-tabs > .tab-header-area > .headers-region > .tab:selected { -fx-background-color: -vr-accent-soft; -fx-border-color: -vr-accent; }
+.contact-profile-tabs .tab-label { -fx-text-fill: -vr-muted; -fx-graphic-text-gap: 6; -fx-content-display: right; }
+.contact-profile-tabs .tab:selected .tab-label { -fx-text-fill: -vr-accent; }
+.contact-profile-tabs .tab:selected .detail-count { -fx-background-color: -vr-surface; }
+.contact-profile-tabs .tab:hover { -fx-background-color: -vr-hover; }
+.contact-profile-tabs:focused .tab:selected .focus-indicator { -fx-border-color: -vr-accent; -fx-border-radius: 3; }
+.detail-dialog .contact-profile-tab { -fx-padding: 16 0 0 0; -fx-background-color: -vr-canvas; }
+.detail-dialog .contact-profile .detail-scroll, .detail-dialog .contact-profile .detail-scroll > .viewport { -fx-background-color: -vr-canvas; -fx-background: -vr-canvas; }
+.contact-timeline-entry {
+    -fx-padding: 16; -fx-background-color: -vr-surface; -fx-background-radius: 9;
+    -fx-border-color: -vr-border; -fx-border-radius: 9;
+}
+.detail-dialog .button.contact-linked-record { -fx-alignment: center-left; -fx-padding: 14 15; -fx-background-radius: 9; -fx-border-radius: 9; }
+.detail-empty { -fx-padding: 32 20; -fx-background-color: -vr-surface; -fx-background-radius: 10; -fx-border-color: -vr-border; -fx-border-radius: 10; }
+.detail-empty .detail-icon { -fx-icon-color: -vr-accent; -fx-icon-size: 23; }
+.detail-empty .label { -fx-text-alignment: center; }
+
 .root {
 
     -fx-focus-color: -vr-accent;
@@ -80,7 +239,13 @@
 .nav-section-label { -fx-padding: 0 12 10 12; }
 .sidebar-button {
     -fx-pref-height: 40;
-
+    -fx-min-height: 40;
+    -fx-padding: 0 13;
+    -fx-alignment: center-left;
+    -fx-background-insets: 0;
+    -fx-border-color: transparent;
+    -fx-border-width: 1;
+    -fx-border-radius: 7;
     -fx-text-fill: -vr-muted;
     -fx-background-radius: 7;
     -fx-graphic-text-gap: 12;
@@ -96,6 +261,7 @@
 
 }
 .sidebar-button-active .nav-icon { -fx-icon-color: -vr-accent; }
+.sidebar-button:focused { -fx-border-color: -vr-accent; }
 .nav-separator .line { -fx-border-color: -vr-border; }
 .navbar {
     -fx-background-color: -vr-canvas;

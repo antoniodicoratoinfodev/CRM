@@ -12,6 +12,8 @@ import java.time.*;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 
+import static com.crm.controller.DetailDialogLayout.*;
+
 /** Validates before the dialog closes; cancelling never changes records or note links. */
 final class CalendarTaskEditor {
     record Result(LocalDate date, Task task, Set<String> notes, boolean delete) { }
@@ -23,7 +25,10 @@ final class CalendarTaskEditor {
     }
     Optional<Result> show(Task original, LocalDate date, int minute, int duration, String description, boolean newTodo) {
         Dialog<Result> dialog = new Dialog<>(); dialog.setTitle(original == null ? "New Task" : "Edit Task"); theme.applyTo(dialog);
-        dialog.setResizable(true);
+        configure(dialog, 620);
+        dialog.getDialogPane().setMinWidth(560);
+        dialog.getDialogPane().setHeader(header("far-calendar-alt", original == null ? "Plan something new" : "Task details",
+                "Keep the schedule, context and next steps together."));
         TextField title = new TextField(original == null ? "" : original.getTitle()); title.setId("eventTitleField");
         title.setPromptText("What are you planning?"); title.getStyleClass().add("event-editor-title");
         ComboBox<String> kind = combo(List.of("Appointment", "All-day event", "Task"),
@@ -35,9 +40,15 @@ final class CalendarTaskEditor {
         TextField startTime = new TextField(CalendarBoard.time(minute)); startTime.setId("eventStartTime"); startTime.setPrefColumnCount(6);
         TextField endTime = new TextField(CalendarBoard.time((minute + duration) % 1440)); endTime.setId("eventEndTime"); endTime.setPrefColumnCount(6);
         DatePicker dueDate = new DatePicker(original == null ? null : original.getDueDate()); dueDate.setPromptText("No deadline");
-        HBox startRow = new HBox(8, field("Starts", startDate), field("Time", startTime));
-        HBox endRow = new HBox(8, field("Ends / through", endDate), field("Time", endTime));
-        VBox schedule = new VBox(10, startRow, endRow);
+        startTime.setPrefWidth(76); endTime.setPrefWidth(76);
+        startTime.setMinWidth(76); endTime.setMinWidth(76);
+        HBox startRow = new HBox(8, startDate, startTime), endRow = new HBox(8, endDate, endTime);
+        HBox.setHgrow(startDate, javafx.scene.layout.Priority.ALWAYS);
+        HBox.setHgrow(endDate, javafx.scene.layout.Priority.ALWAYS);
+        startDate.setMaxWidth(Double.MAX_VALUE); endDate.setMaxWidth(Double.MAX_VALUE);
+        startDate.setMinWidth(0); endDate.setMinWidth(0);
+        startTime.setAccessibleText("Start time, HH:mm"); endTime.setAccessibleText("End time, HH:mm");
+        HBox schedule = columns(field("Starts", startRow), field("Ends / through", endRow));
         VBox deadline = field("Deadline (optional)", dueDate);
         TextArea body = new TextArea(original == null ? description : original.getDescription()); body.setPrefRowCount(3); body.setWrapText(true);
         body.setPromptText("Context, location, meeting link or next steps…");
@@ -45,12 +56,14 @@ final class CalendarTaskEditor {
         ComboBox<Task.Status> status = combo(List.of(Task.Status.values()), original == null ? Task.Status.TODO : original.getStatus());
         ComboBox<Contact> contact = new ComboBox<>(FXCollections.observableArrayList(contacts)); contact.setPromptText("No linked contact"); contact.setMaxWidth(Double.MAX_VALUE);
         contact.setConverter(new StringConverter<>() {
-            @Override public String toString(Contact value) { return value == null ? "No linked contact" : value.nameProperty().get() + " · " + value.companyProperty().get(); }
+            @Override public String toString(Contact value) { return value == null ? "No linked contact" : value.nameProperty().get()
+                    + (value.companyProperty().get() == null || value.companyProperty().get().isBlank() ? "" : " · " + value.companyProperty().get()); }
             @Override public Contact fromString(String value) { return null; }
         });
         if (original != null) contacts.stream().filter(c -> c.getId().equals(original.getContactId())).findFirst().ifPresent(contact::setValue);
         Button clearContact = new Button("Clear"); clearContact.getStyleClass().add("text-button"); clearContact.setOnAction(e -> contact.setValue(null));
-        HBox contactRow = new HBox(8, contact, clearContact); HBox.setHgrow(contact, javafx.scene.layout.Priority.ALWAYS);
+        clearContact.disableProperty().bind(contact.valueProperty().isNull()); clearContact.setMinWidth(Region.USE_PREF_SIZE);
+        HBox contactRow = new HBox(8, contact, clearContact); contactRow.setAlignment(Pos.CENTER_LEFT); HBox.setHgrow(contact, javafx.scene.layout.Priority.ALWAYS);
         ComboBox<Task.Frequency> frequency = combo(List.of(Task.Frequency.values()), original == null ? Task.Frequency.NONE : original.getFrequency());
         Spinner<Integer> interval = new Spinner<>(1, 999, original == null ? 1 : original.getRepeatInterval()); interval.setEditable(false); interval.setPrefWidth(85);
         Spinner<Integer> count = new Spinner<>(0, 100000, original == null ? 0 : original.getRepeatCount()); count.setEditable(false); count.setPrefWidth(100);
@@ -65,6 +78,7 @@ final class CalendarTaskEditor {
         if (original != null) noteIntegration.notesForTask(original.getId()).forEach(note -> linked.add(note.getId()));
         TextField noteSearch = new TextField(); noteSearch.setPromptText("Find a note or folder…");
         ListView<Note> noteList = new ListView<>(); noteList.setPrefHeight(145);
+        noteList.setPlaceholder(hint("No matching notes. Create a note in Notes to link it here."));
         Map<String, String> folders = new HashMap<>(); noteIntegration.folders().forEach(folder -> folders.put(folder.getId(), folder.getName()));
         noteList.setCellFactory(ignored -> new ListCell<>() {
             @Override protected void updateItem(Note item, boolean empty) {
@@ -79,28 +93,40 @@ final class CalendarTaskEditor {
         Runnable filterNotes = () -> noteList.setItems(FXCollections.observableArrayList(noteIntegration.notes().stream().filter(note ->
                 (note.getTitle() + " " + folders.getOrDefault(note.getFolderId(), "")).toLowerCase(Locale.ROOT).contains(noteSearch.getText().toLowerCase(Locale.ROOT))).toList()));
         noteSearch.textProperty().addListener((o, a, b) -> filterNotes.run()); filterNotes.run();
-        VBox recurrence = new VBox(10, new FlowPane(10, 8, field("Repeat", frequency), field("Every", interval), field("Occurrences (0 = unlimited)", count)),
-                field("Repeat until (optional)", until), field("Reminder", reminder), hint("Monthly repeats skip months without that date. Reminders run while VoidReach is open."));
+        VBox recurrence = new VBox(12, columns(field("Repeat", frequency), field("Every", interval)),
+                columns(field("Occurrences · 0 = unlimited", count), field("Repeat until (optional)", until)),
+                field("Reminder", reminder), hint("Monthly repeats skip months without that date. Reminders run while VoidReach is open."));
         TitledPane advanced = new TitledPane("Repeat & reminders", recurrence); advanced.setExpanded(false);
         TitledPane notes = new TitledPane("Linked notes", new VBox(8, noteSearch, noteList)); notes.setExpanded(false);
+        advanced.getStyleClass().add("detail-disclosure"); notes.getStyleClass().add("detail-disclosure");
         Label error = hint(""); error.getStyleClass().add("form-error"); error.setId("eventValidationError");
-        VBox content = new VBox(14, title, field("Type", kind), schedule, deadline,
-                field("Contact", contactRow), new FlowPane(12, 8, field("Priority", priority), field("Status", status), field("Color", color)),
-                field("Description", body), advanced, notes);
-        content.getStyleClass().add("event-editor"); content.setPrefWidth(530);
+        Region scheduleSpacer = new Region(); HBox.setHgrow(scheduleSpacer, javafx.scene.layout.Priority.ALWAYS);
+        kind.setAccessibleText("Item type"); kind.setPrefWidth(180);
+        HBox scheduleHeading = new HBox(12, label("Schedule", "detail-section-title"), scheduleSpacer, kind);
+        scheduleHeading.setAlignment(Pos.CENTER_LEFT);
+        VBox scheduleSection = new VBox(12, scheduleHeading, schedule, deadline);
+        scheduleSection.getStyleClass().add("detail-section");
+        VBox content = new VBox(16, field("Title", title),
+                scheduleSection,
+                section("Details", columns(field("Priority", priority), field("Status", status), field("Color", color)),
+                        field("Linked contact", contactRow), field("Description", body)),
+                new VBox(8, advanced, notes));
+        content.getStyleClass().add("event-editor"); content.setMinWidth(0);
         Runnable updateKind = () -> {
             boolean task = kind.getValue().equals("Task"), allDay = kind.getValue().equals("All-day event");
             schedule.setVisible(!task); schedule.setManaged(!task); deadline.setVisible(task); deadline.setManaged(task);
             startTime.setDisable(allDay); endTime.setDisable(allDay); advanced.setDisable(task);
         };
         kind.valueProperty().addListener((o, a, b) -> updateKind.run()); updateKind.run();
-        ScrollPane scroller = new ScrollPane(content); scroller.setFitToWidth(true); scroller.setPrefViewportHeight(520); scroller.setMinHeight(160); scroller.getStyleClass().add("editor-scroll");
+        ScrollPane scroller = scroller(content, 600);
         error.setVisible(false); error.setManaged(false); error.setPadding(new javafx.geometry.Insets(8, 20, 0, 20));
         VBox shell = new VBox(scroller, error); VBox.setVgrow(scroller, javafx.scene.layout.Priority.ALWAYS);
         dialog.getDialogPane().setContent(shell);
-        ButtonType save = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE), delete = new ButtonType("Delete", ButtonBar.ButtonData.OTHER);
+        ButtonType save = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE), delete = new ButtonType("Delete", ButtonBar.ButtonData.LEFT);
         dialog.getDialogPane().getButtonTypes().setAll(save, ButtonType.CANCEL);
         if (original != null) dialog.getDialogPane().getButtonTypes().add(delete);
+        dialog.getDialogPane().lookupButton(save).getStyleClass().add("btn-primary");
+        if (original != null) dialog.getDialogPane().lookupButton(delete).getStyleClass().add("danger-button");
         Result[] accepted = new Result[1];
         dialog.getDialogPane().lookupButton(save).addEventFilter(ActionEvent.ACTION, e -> {
             try {
@@ -149,6 +175,5 @@ final class CalendarTaskEditor {
         });
         return box;
     }
-    private static VBox field(String title, javafx.scene.Node input) { Label label = new Label(title); label.getStyleClass().add("field-caption"); return new VBox(5, label, input); }
     private static Label hint(String text) { Label label = new Label(text); label.setWrapText(true); label.getStyleClass().add("section-subtitle"); return label; }
 }

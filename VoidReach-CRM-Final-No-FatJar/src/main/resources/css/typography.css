@@ -18,8 +18,8 @@
 .brand-caption, .nav-section-label, .account-caption, .page-eyebrow,
 .keyboard-shortcut, .command-section, .command-result-kind, .command-keyboard-hint { -fx-font-size: 11px; }
 .nav-section-label, .page-eyebrow, .command-section { -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
-.sidebar-button { -fx-font-size: 13px; -fx-font-weight: 400; }
-.sidebar-button.sidebar-button-active { -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+/* Selection changes color only, preserving glyph widths and baseline on click. */
+.sidebar-button, .sidebar-button.sidebar-button-active { -fx-font-family: "Inter Medium"; -fx-font-size: 13px; -fx-font-weight: 400; -fx-font-style: normal; }
 .topbar-title, .account-name { -fx-font-size: 13px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
 .save-status { -fx-font-size: 11px; }
 .workspace-search-prompt, .workspace-history-menu { -fx-font-size: 12px; }
@@ -100,6 +100,13 @@
 .dialog-pane .header-panel .label { -fx-font-size: 18px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
 .dialog-pane .button { -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
 .event-editor-title, .dialog-pane .text-field.event-editor-title { -fx-font-size: 20px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.detail-dialog-title, .contact-profile-name { -fx-font-size: 22px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.detail-dialog-subtitle, .detail-record-subtitle, .detail-empty-copy, .contact-channel-caption { -fx-font-size: 12px; -fx-font-family: "Inter"; -fx-font-weight: 400; }
+.detail-section-title, .detail-record-title, .detail-empty-title, .contact-channel-value { -fx-font-size: 13px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.contact-profile-initials { -fx-font-size: 20px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.contact-profile-badge, .detail-count { -fx-font-size: 11px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.contact-profile-tabs .tab-label, .detail-disclosure { -fx-font-size: 12px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.detail-disclosure > .content { -fx-font-family: "Inter"; -fx-font-weight: 400; }
 .auth-brand, .splash-brand { -fx-font-size: 28px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
 .auth-title { -fx-font-size: 22px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
 .auth-subtitle { -fx-font-size: 13px; }
