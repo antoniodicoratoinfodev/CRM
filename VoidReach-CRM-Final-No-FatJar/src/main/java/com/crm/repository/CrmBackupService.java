@@ -12,7 +12,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-/** Creates three rotating, password-free CRM snapshots for the active account. */
+/** Creates three rotating CRM snapshots, encrypted when local protection is enabled. */
 public final class CrmBackupService implements AutoCloseable {
     static final Duration DEFAULT_INTERVAL = Duration.ofMinutes(2);
     static final int MAX_BACKUPS_PER_USER = 3;
@@ -21,6 +21,34 @@ public final class CrmBackupService implements AutoCloseable {
     private final Path backupRoot;
     private final Duration interval;
     private ScheduledExecutorService executor;
+    private volatile String lastFailure = "";
+    public String lastFailure() { return lastFailure; }
+
+    public synchronized List<Path> listBackups(String userId) {
+        Path directory = backupRoot.resolve(safeUserDirectory(userId));
+        if (!Files.isDirectory(directory)) return List.of();
+        try (var entries = Files.list(directory)) {
+            return entries.filter(Files::isRegularFile).filter(path -> isBackupFile(path) || isCheckpoint(path))
+                    .sorted(Comparator.comparing((Path path) -> path.getFileName().toString()).reversed()).toList();
+        } catch (IOException failure) { throw new IllegalStateException("Backups could not be listed.", failure); }
+    }
+
+    public synchronized Path checkpoint(String userId) {
+        Path directory = backupRoot.resolve(safeUserDirectory(userId));
+        Path target = directory.resolve("checkpoint-" + System.currentTimeMillis() + "-" + java.util.UUID.randomUUID().toString().substring(0, 8) + ".properties");
+        repository.writeSnapshot(target, repository.loadForUser(userId), "VoidReach manual checkpoint", userId);
+        return target;
+    }
+
+    public CrmDataSnapshot readBackup(String userId, Path path) {
+        Path directory = backupRoot.resolve(safeUserDirectory(userId)).toAbsolutePath().normalize();
+        Path resolved = path.toAbsolutePath().normalize();
+        if (!resolved.getParent().equals(directory) || !listBackups(userId).contains(path))
+            throw new IllegalArgumentException("Choose a backup belonging to the active account.");
+        ImportedWorkspace imported = repository.readImport(resolved);
+        if (!imported.warnings().isEmpty()) throw new IllegalArgumentException("This backup contains damaged records. Choose another snapshot, or explicitly import the readable records.");
+        return imported.snapshot();
+    }
 
     public CrmBackupService() {
         this(new LocalCrmDataRepository(),
@@ -50,7 +78,7 @@ public final class CrmBackupService implements AutoCloseable {
                 () -> createBackupSafely(userId), delayMillis, delayMillis, TimeUnit.MILLISECONDS);
     }
 
-    void createBackupNow(String userId) {
+    synchronized void createBackupNow(String userId) {
         Path source = repository.dataFile(userId);
         if (!Files.isRegularFile(source)) return;
 
@@ -60,7 +88,7 @@ public final class CrmBackupService implements AutoCloseable {
             Files.createDirectories(accountDirectory);
             long sequence = nextSequence(accountDirectory);
             Path target = accountDirectory.resolve(String.format("crm-data-%013d.properties", sequence));
-            repository.writeSnapshot(target, snapshot, "VoidReach CRM automatic backup for one account");
+            repository.writeSnapshot(target, snapshot, "VoidReach CRM automatic backup for one account", userId);
             pruneOldBackups(accountDirectory);
         } catch (IOException e) {
             throw new IllegalStateException("The automatic backup could not be created", e);
@@ -70,8 +98,9 @@ public final class CrmBackupService implements AutoCloseable {
     private void createBackupSafely(String userId) {
         try {
             createBackupNow(userId);
-        } catch (RuntimeException ignored) {
-            // Backups must never interrupt or slow down the JavaFX user interface.
+            lastFailure = "";
+        } catch (RuntimeException failure) {
+            lastFailure = "Automatic backup failed. Check disk space and folder access.";
         }
     }
 
@@ -102,7 +131,20 @@ public final class CrmBackupService implements AutoCloseable {
 
     private boolean isBackupFile(Path path) {
         String name = path.getFileName().toString();
-        return Files.isRegularFile(path) && name.startsWith("crm-data-") && name.endsWith(".properties");
+        return Files.isRegularFile(path) && name.matches("crm-data-[0-9]+\\.properties");
+    }
+
+    private boolean isCheckpoint(Path path) { return path.getFileName().toString().matches("checkpoint-[0-9]+-[a-f0-9]{8}\\.properties"); }
+
+    public synchronized void migrateProtection(String userId) {
+        Path directory = backupRoot.resolve(safeUserDirectory(userId));
+        if (!Files.isDirectory(directory)) return;
+        try (var files = Files.list(directory)) {
+            for (Path file : files.filter(Files::isRegularFile).filter(path -> {
+                String name = path.getFileName().toString();
+                return name.matches("(crm-data-[0-9]+|checkpoint-[0-9]+-[a-f0-9]{8})\\.properties(\\.bak|\\.corrupt\\.properties(\\.bak)?|(?:\\.[A-Za-z0-9_-]+)+\\.tmp)?");
+            }).toList()) com.crm.service.WorkspaceVaultService.encryptExisting(file, userId);
+        } catch (IOException failure) { throw new IllegalStateException("Existing backups could not be encrypted.", failure); }
     }
 
     private String safeUserDirectory(String userId) {

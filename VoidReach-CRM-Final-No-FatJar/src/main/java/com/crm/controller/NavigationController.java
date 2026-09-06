@@ -8,6 +8,7 @@ import javafx.scene.layout.VBox;
 import org.kordamp.ikonli.javafx.FontIcon;
 
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /** Owns sidebar selection and switching between the main application views. */
 public final class NavigationController {
@@ -22,6 +23,7 @@ public final class NavigationController {
     private final Label genericTitle;
     private final FontIcon genericIcon;
     private final VBox sidebarContainer;
+    private Consumer<String> onNavigate = title -> { };
 
     public NavigationController(Node homeView, Node dashboardView,
                                 VBox contactsView, VBox calendarView, VBox tasksView, VBox notesView,
@@ -69,6 +71,15 @@ public final class NavigationController {
     public void showContacts() {
         showView(contactsView, "Contacts");
     }
+
+    public void setOnNavigate(Consumer<String> onNavigate) {
+        this.onNavigate = Objects.requireNonNull(onNavigate);
+    }
+
+    public void showHome() { showView(homeView, "Home"); }
+    public void showDashboard() { showView(dashboardView, "Dashboard"); }
+    public void showTasks() { showView(tasksView, "Tasks"); }
+    public void showSettings() { showView(settingsView, "Settings"); }
 
     public void showCalendar() {
         showView(calendarView, "Calendar");
@@ -121,6 +132,7 @@ public final class NavigationController {
         }
         if (selected != null && selected.getStyleClass().contains("sidebar-button")) {
             selected.getStyleClass().add("sidebar-button-active");
+            onNavigate.accept(selected.getText());
         }
     }
 }

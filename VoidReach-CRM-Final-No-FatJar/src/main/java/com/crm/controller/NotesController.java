@@ -6,6 +6,9 @@ import com.crm.model.NoteFolder;
 import com.crm.model.Task;
 import com.crm.service.CodeSyntaxHighlighter;
 import com.crm.service.ThemeService;
+import com.crm.service.Typography;
+import com.crm.service.ExternalLinks;
+import com.crm.view.MarkdownPreviewView;
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -22,8 +25,6 @@ import javafx.scene.input.TransferMode;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
-import javafx.scene.text.Text;
-import javafx.scene.text.TextFlow;
 import javafx.util.Duration;
 import org.kordamp.ikonli.javafx.FontIcon;
 import org.fxmisc.richtext.CodeArea;
@@ -51,11 +52,6 @@ public final class NotesController {
     private static final List<Double> FONT_SIZES = List.of(
             12.0, 14.0, 16.0, 18.0, 20.0, 22.0, 24.0, 28.0, 32.0, 36.0, 40.0, 48.0);
     private static final List<String> FONT_WEIGHTS = List.of("Regular", "Medium", "Semibold", "Bold");
-    private static final Pattern INLINE_MARKDOWN = Pattern.compile(
-            "\\[\\[([^]\\n]+)]]|\\*\\*(.+?)\\*\\*|__(.+?)__|`([^`\\n]+)`|"
-                    + "\\[([^]\\n]+)]\\(([^)\\n]+)\\)|(?<!\\*)\\*([^*\\n]+)\\*(?!\\*)|"
-                    + "(?<!_)_([^_\\n]+)_(?!_)|~~(.+?)~~");
-
     private final VBox libraryPane;
     private final VBox editorPane;
     private final TextField searchField;
@@ -82,8 +78,7 @@ public final class NotesController {
     private final ComboBox<Double> previewFontSizeCombo;
     private final ColorPicker previewColorPicker;
     private final CodeArea contentArea;
-    private final ScrollPane previewScroll;
-    private final VBox previewContent;
+    private final StackPane previewPane;
     private final Label editorStatus;
     private final ThemeService themeService;
     private final NoteActions actions;
@@ -91,6 +86,8 @@ public final class NotesController {
     private final List<NoteFolder> folders = new ArrayList<>();
     private Map<LocalDate, List<Task>> tasksByDate = Map.of();
     private Note currentNote;
+    private java.util.function.Consumer<Note> noteOpened = note -> { };
+    public void setOnNoteOpened(java.util.function.Consumer<Note> action) { noteOpened = action; }
     private String currentFolderId = "";
     private boolean updatingEditor;
     private final PauseTransition highlightDebounce = new PauseTransition(Duration.millis(45));
@@ -106,8 +103,8 @@ public final class NotesController {
                            ToggleButton boldToggle, ToggleButton italicToggle,
                            HBox previewSettingsBar, ComboBox<String> previewFontFamilyCombo,
                            ComboBox<Double> previewFontSizeCombo, ColorPicker previewColorPicker,
-                           CodeArea contentArea, ScrollPane previewScroll,
-                           VBox previewContent, Label editorStatus, ThemeService themeService,
+                           CodeArea contentArea, StackPane previewPane,
+                           Label editorStatus, ThemeService themeService,
                            NoteActions actions) {
         this.libraryPane = Objects.requireNonNull(libraryPane);
         this.editorPane = Objects.requireNonNull(editorPane);
@@ -135,8 +132,7 @@ public final class NotesController {
         this.previewFontSizeCombo = Objects.requireNonNull(previewFontSizeCombo);
         this.previewColorPicker = Objects.requireNonNull(previewColorPicker);
         this.contentArea = Objects.requireNonNull(contentArea);
-        this.previewScroll = Objects.requireNonNull(previewScroll);
-        this.previewContent = Objects.requireNonNull(previewContent);
+        this.previewPane = Objects.requireNonNull(previewPane);
         this.editorStatus = Objects.requireNonNull(editorStatus);
         this.themeService = Objects.requireNonNull(themeService);
         this.actions = Objects.requireNonNull(actions);
@@ -144,13 +140,27 @@ public final class NotesController {
 
     public void initialize() {
         contentArea.setPlaceholder(new Label("Start writing…"));
+        Typography.load();
         List<String> families = new ArrayList<>(Font.getFamilies());
-        families.remove("System");
-        families.addFirst("System");
+        families.removeAll(List.of("System", Typography.UI, Typography.CODE));
+        families.removeIf(family -> family.startsWith("Inter ") || family.startsWith("JetBrains Mono "));
+        families.addAll(0, List.of("System", Typography.UI, Typography.CODE));
         fontFamilyCombo.setItems(FXCollections.observableArrayList(families));
         previewFontFamilyCombo.setItems(FXCollections.observableArrayList(families));
+        var familyNames = new javafx.util.StringConverter<String>() {
+            @Override public String toString(String family) { return "System".equals(family) ? "Default" : safe(family); }
+            @Override public String fromString(String value) { return "Default".equals(value) ? "System" : value; }
+        };
+        fontFamilyCombo.setConverter(familyNames); previewFontFamilyCombo.setConverter(familyNames);
+        fontFamilyCombo.setTooltip(new Tooltip("Default uses JetBrains Mono for Markdown source and Inter for plain text."));
+        previewFontFamilyCombo.setTooltip(new Tooltip("Default uses the bundled Inter reading font. This does not change the editor."));
         fontSizeCombo.setItems(FXCollections.observableArrayList(FONT_SIZES));
         previewFontSizeCombo.setItems(FXCollections.observableArrayList(FONT_SIZES));
+        var sizeNames = new javafx.util.StringConverter<Double>() {
+            @Override public String toString(Double size) { return size == null ? "" : size.toString().replaceFirst("\\.0$", ""); }
+            @Override public Double fromString(String value) { return Double.valueOf(value); }
+        };
+        fontSizeCombo.setConverter(sizeNames); previewFontSizeCombo.setConverter(sizeNames);
         fontWeightCombo.setItems(FXCollections.observableArrayList(FONT_WEIGHTS));
         emptyLabel.managedProperty().bind(emptyLabel.visibleProperty());
         searchField.textProperty().addListener((observable, oldValue, newValue) -> renderLibrary());
@@ -188,9 +198,9 @@ public final class NotesController {
         fontWeightCombo.valueProperty().addListener((observable, oldValue, newValue) -> weightSelectionChanged());
         boldToggle.selectedProperty().addListener((observable, oldValue, selected) -> boldSelectionChanged(selected));
         italicToggle.selectedProperty().addListener((observable, oldValue, newValue) -> typographyChanged());
-        previewFontFamilyCombo.valueProperty().addListener((observable, oldValue, newValue) -> previewTypographyChanged());
-        previewFontSizeCombo.valueProperty().addListener((observable, oldValue, newValue) -> previewTypographyChanged());
-        previewColorPicker.valueProperty().addListener((observable, oldValue, newValue) -> previewTypographyChanged());
+        previewFontFamilyCombo.valueProperty().addListener((observable, oldValue, newValue) -> previewTypographyChanged(false));
+        previewFontSizeCombo.valueProperty().addListener((observable, oldValue, newValue) -> previewTypographyChanged(false));
+        previewColorPicker.valueProperty().addListener((observable, oldValue, newValue) -> previewTypographyChanged(true));
         contentArea.setOnKeyPressed(event -> {
             if (event.getCode() == KeyCode.TAB && isMarkdown()) {
                 contentArea.replaceSelection("    ");
@@ -228,6 +238,20 @@ public final class NotesController {
     }
 
     public List<Note> snapshot() { return new ArrayList<>(notes); }
+    public Note currentNote() { return currentNote; }
+    public void linkContact(String contactId) { if (currentNote != null) { currentNote.setContactId(contactId); changed(); } }
+    public void createForContact(com.crm.model.Contact contact) {
+        Note note = new Note("Meeting · " + contact.nameProperty().get(), NoteFormat.MARKDOWN);
+        note.setContent(template("Meeting")); note.setContactId(contact.getId()); notes.add(note); changed(); actions.showNotes(); open(note);
+    }
+    private static String template(String type) {
+        return switch (type) {
+            case "Meeting" -> "# Meeting notes\n\n## Agenda\n- \n\n## Decisions\n- \n\n## Next steps\n- [ ] \n";
+            case "Call" -> "# Call notes\n\n## Context\n\n## Conversation\n\n## Follow-up\n- [ ] \n";
+            case "Project brief" -> "# Project brief\n\n## Goal\n\n## Scope\n\n## Deliverables\n- [ ] \n\n## Open questions\n";
+            default -> "";
+        };
+    }
     public List<NoteFolder> foldersSnapshot() { return new ArrayList<>(folders); }
 
     public void refreshTheme() {
@@ -236,8 +260,8 @@ public final class NotesController {
             updatingEditor = true;
             previewColorPicker.setValue(Color.web(defaultPreviewColor()));
             updatingEditor = false;
-            if (previewToggle.isSelected()) renderPreview();
         }
+        if (previewToggle.isSelected()) renderPreview();
         applySyntaxHighlighting();
     }
 
@@ -264,9 +288,12 @@ public final class NotesController {
         form.add(title, 1, 0);
         form.add(new Label("Format:"), 0, 1);
         form.add(format, 1, 1);
+        ComboBox<String> templateChoice = new ComboBox<>(FXCollections.observableArrayList("Blank", "Meeting", "Call", "Project brief"));
+        templateChoice.setValue("Blank"); form.add(new Label("Template:"), 0, 2); form.add(templateChoice, 1, 2);
         dialog.getDialogPane().setContent(form);
         if (dialog.showAndWait().filter(create::equals).isEmpty()) return;
         Note note = new Note(title.getText().isBlank() ? "Untitled note" : title.getText().trim(), format.getValue());
+        note.setContent(template(templateChoice.getValue()));
         note.setFolderId(currentFolderId);
         notes.add(note);
         changed();
@@ -313,7 +340,7 @@ public final class NotesController {
         Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION);
         confirmation.setTitle("Delete note");
         confirmation.setHeaderText("Delete “" + displayTitle(currentNote) + "”?");
-        confirmation.setContentText("This cannot be undone. The link from its task will also disappear.");
+        confirmation.setContentText("You can restore this note from History → Recently deleted.");
         themeService.applyTo(confirmation);
         if (confirmation.showAndWait().filter(ButtonType.OK::equals).isEmpty()) return;
         notes.remove(currentNote);
@@ -329,15 +356,19 @@ public final class NotesController {
     }
 
     public void togglePreview() {
-        if (!isMarkdown()) return;
-        boolean preview = previewToggle.isSelected();
+        boolean preview = isMarkdown() && previewToggle.isSelected();
+        previewToggle.setText(preview ? "Edit" : "Preview");
+        previewToggle.setVisible(isMarkdown()); previewToggle.setManaged(isMarkdown());
+        markdownToolbar.setVisible(isMarkdown() && !preview); markdownToolbar.setManaged(isMarkdown() && !preview);
+        for (Node child : markdownToolbar.getChildren()) if (child instanceof ButtonBase && child != previewToggle) child.setDisable(preview);
         contentArea.setVisible(!preview);
         contentArea.setManaged(!preview);
-        previewScroll.setVisible(preview);
-        previewScroll.setManaged(preview);
+        previewPane.setVisible(preview);
+        previewPane.setManaged(preview);
         previewSettingsBar.setVisible(preview);
         previewSettingsBar.setManaged(preview);
-        if (preview) renderPreview();
+        if (preview) { renderPreview(); readingView.focus(); }
+        else contentArea.requestFocus();
     }
 
     public void markdownHeading() { prefixCurrentLine("## "); }
@@ -402,10 +433,11 @@ public final class NotesController {
         markdownToolbar.setVisible(isMarkdown());
         markdownToolbar.setManaged(isMarkdown());
         previewToggle.setSelected(false);
+        togglePreview();
         contentArea.setVisible(true);
         contentArea.setManaged(true);
-        previewScroll.setVisible(false);
-        previewScroll.setManaged(false);
+        previewPane.setVisible(false);
+        previewPane.setManaged(false);
         previewSettingsBar.setVisible(false);
         previewSettingsBar.setManaged(false);
         refreshFolderChoices();
@@ -417,6 +449,7 @@ public final class NotesController {
         libraryPane.setManaged(false);
         editorPane.setVisible(true);
         editorPane.setManaged(true);
+        noteOpened.accept(note);
         titleField.requestFocus();
     }
 
@@ -1002,177 +1035,30 @@ public final class NotesController {
         if (length > 0) spans.add(List.of(styleClass), length);
     }
 
-    private void addCodeTokens(TextFlow target, String code, String typography) {
-        for (CodeSyntaxHighlighter.Token token : CodeSyntaxHighlighter.highlight(code)) {
-            Text text = new Text(token.text());
-            text.getStyleClass().add("syntax-" + token.kind().name().toLowerCase(Locale.ROOT));
-            text.setStyle(typography);
-            setInlineFill(text, codeTokenColor(token.kind()));
-            target.getChildren().add(text);
-        }
-    }
-
-    private String codeTokenColor(CodeSyntaxHighlighter.TokenKind kind) {
-        boolean light = themeService.activeTheme() == ThemeService.Theme.LIGHT;
-        if (light) {
-            return switch (kind) {
-                case KEYWORD -> "#7C3AED";
-                case TYPE -> "#047857";
-                case VARIABLE -> "#0369A1";
-                case FUNCTION -> "#92400E";
-                case STRING -> "#B45309";
-                case NUMBER -> "#15803D";
-                case COMMENT -> "#6B7280";
-                case ANNOTATION -> "#A16207";
-                case OPERATOR -> "#64748B";
-                case PLAIN -> "#334155";
-            };
-        }
-        return switch (kind) {
-            case KEYWORD -> "#C586C0";
-            case TYPE -> "#4EC9B0";
-            case VARIABLE -> "#9CDCFE";
-            case FUNCTION -> "#DCDCAA";
-            case STRING -> "#CE9178";
-            case NUMBER -> "#B5CEA8";
-            case COMMENT -> "#6A9955";
-            case ANNOTATION -> "#DCDCAA";
-            case OPERATOR -> "#D4D4D4";
-            case PLAIN -> "#D4D4D4";
-        };
-    }
+    private MarkdownPreviewView readingView;
 
     private void renderPreview() {
-        previewContent.getChildren().clear();
-        previewContent.setMaxWidth(980);
-        String normalizedMarkdown = CodeSyntaxHighlighter.normalizeMultilineBackticks(contentArea.getText());
-        String[] lines = normalizedMarkdown.split("\\R", -1);
-        boolean codeBlock = false;
-        VBox code = null;
-        for (String raw : lines) {
-            if (raw.stripLeading().startsWith("```")) {
-                codeBlock = !codeBlock;
-                if (codeBlock) {
-                    code = new VBox(2);
-                    code.getStyleClass().add("markdown-code-block");
-                    previewContent.getChildren().add(code);
-                }
-                continue;
-            }
-            if (codeBlock) {
-                TextFlow line = new TextFlow();
-                line.getStyleClass().add("markdown-code-line");
-                line.setStyle(previewTypographyStyle(0.82, Math.max(400, currentNote.getFontWeight()), false, "Monospaced"));
-                addCodeTokens(line, raw.isEmpty() ? " " : raw,
-                        previewTypographyStyle(0.82, Math.max(400, currentNote.getFontWeight()), false, "Monospaced"));
-                code.getChildren().add(line);
-                continue;
-            }
-            String trimmed = raw.stripLeading();
-            if (trimmed.equals("---") || trimmed.equals("***")) {
-                previewContent.getChildren().add(new Separator());
-            } else if (trimmed.startsWith("### ")) {
-                previewContent.getChildren().add(markdownLine(trimmed.substring(4), "markdown-h3", 1.28, true));
-            } else if (trimmed.startsWith("## ")) {
-                previewContent.getChildren().add(markdownLine(trimmed.substring(3), "markdown-h2", 1.55, true));
-            } else if (trimmed.startsWith("# ")) {
-                previewContent.getChildren().add(markdownLine(trimmed.substring(2), "markdown-h1", 1.9, true));
-            } else if (trimmed.startsWith("- [ ] ") || trimmed.startsWith("- [x] ") || trimmed.startsWith("- [X] ")) {
-                CheckBox item = new CheckBox(trimmed.substring(6));
-                item.setSelected(!trimmed.startsWith("- [ ]"));
-                item.setMouseTransparent(true);
-                item.setFocusTraversable(false);
-                item.getStyleClass().add("markdown-check");
-                String itemStyle = previewTypographyStyle(1.0, currentNote.getFontWeight(),
-                        currentNote.isItalic(), currentNote.getPreviewFontFamily());
-                itemStyle += " -fx-text-fill: " + effectivePreviewColor() + ";";
-                item.setStyle(itemStyle);
-                previewContent.getChildren().add(item);
-            } else if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
-                previewContent.getChildren().add(markdownLine("•  " + trimmed.substring(2), "markdown-list-item", 1.0, false));
-            } else if (trimmed.startsWith("> ")) {
-                previewContent.getChildren().add(markdownLine(trimmed.substring(2), "markdown-quote", 1.0, false));
-            } else {
-                previewContent.getChildren().add(markdownLine(raw.isEmpty() ? " " : raw, "markdown-paragraph", 1.0, false));
-            }
+        if (currentNote == null) return;
+        if (readingView == null) {
+            readingView = new MarkdownPreviewView(this::openPreviewLink);
+            previewPane.getChildren().setAll(readingView);
         }
+        readingView.show(currentNote, themeService.activeTheme());
     }
 
-    private Node markdownLine(String value, String styleClass, double sizeMultiplier, boolean heading) {
-        TextFlow flow = new TextFlow();
-        flow.getStyleClass().add(styleClass);
-        int baseWeight = heading ? Math.max(700, currentNote.getFontWeight()) : currentNote.getFontWeight();
-        flow.setLineSpacing(Math.max(3, currentNote.getFontSize() * 0.28));
-        flow.setStyle(previewTypographyStyle(sizeMultiplier, baseWeight,
-                currentNote.isItalic(), currentNote.getPreviewFontFamily()));
-        Matcher matcher = INLINE_MARKDOWN.matcher(value);
-        int cursor = 0;
-        while (matcher.find()) {
-            if (matcher.start() > cursor) flow.getChildren().add(previewText(
-                    value.substring(cursor, matcher.start()), sizeMultiplier, baseWeight, currentNote.isItalic()));
-            if (matcher.group(1) != null) {
-                String target = matcher.group(1).trim();
-                Hyperlink link = new Hyperlink(target);
-                link.getStyleClass().add("markdown-wiki-link");
-                link.setStyle(previewTypographyStyle(sizeMultiplier, Math.max(600, baseWeight),
-                        currentNote.isItalic(), currentNote.getPreviewFontFamily()));
-                appendInlineStyle(link, "-fx-text-fill: " + linkColor() + ";");
-                link.setOnAction(event -> notes.stream()
-                        .filter(note -> note.getTitle().equalsIgnoreCase(target))
-                        .findFirst().ifPresent(this::open));
-                flow.getChildren().add(link);
-            } else if (matcher.group(2) != null || matcher.group(3) != null) {
-                Text strong = new Text(matcher.group(2) != null ? matcher.group(2) : matcher.group(3));
-                strong.getStyleClass().add("markdown-strong");
-                strong.setStyle(previewTypographyStyle(sizeMultiplier, Math.max(700, baseWeight),
-                        currentNote.isItalic(), currentNote.getPreviewFontFamily()));
-                applyPreviewColor(strong);
-                flow.getChildren().add(strong);
-            } else if (matcher.group(4) != null) {
-                TextFlow code = new TextFlow();
-                code.getStyleClass().add("markdown-inline-code");
-                code.setStyle(previewTypographyStyle(sizeMultiplier * 0.86, 500, false, "Monospaced"));
-                addCodeTokens(code, matcher.group(4),
-                        previewTypographyStyle(sizeMultiplier * 0.86, 500, false, "Monospaced"));
-                flow.getChildren().add(code);
-            } else if (matcher.group(5) != null) {
-                Hyperlink link = new Hyperlink(matcher.group(5));
-                link.getStyleClass().add("markdown-external-link");
-                String url = matcher.group(6);
-                link.setTooltip(new Tooltip(url + "\nClick to copy the address"));
-                link.setStyle(previewTypographyStyle(sizeMultiplier, Math.max(500, baseWeight),
-                        currentNote.isItalic(), currentNote.getPreviewFontFamily()));
-                appendInlineStyle(link, "-fx-text-fill: " + linkColor() + ";");
-                link.setOnAction(event -> {
-                    ClipboardContent clipboard = new ClipboardContent();
-                    clipboard.putString(url);
-                    Clipboard.getSystemClipboard().setContent(clipboard);
-                    editorStatus.setText("Link copied");
-                });
-                flow.getChildren().add(link);
-            } else if (matcher.group(7) != null || matcher.group(8) != null) {
-                Text emphasis = new Text(matcher.group(7) != null ? matcher.group(7) : matcher.group(8));
-                emphasis.getStyleClass().add("markdown-emphasis");
-                emphasis.setStyle(previewTypographyStyle(sizeMultiplier, baseWeight,
-                        true, currentNote.getPreviewFontFamily()));
-                applyPreviewColor(emphasis);
-                flow.getChildren().add(emphasis);
-            } else if (matcher.group(9) != null) {
-                Text deleted = new Text(matcher.group(9));
-                deleted.setStrikethrough(true);
-                deleted.getStyleClass().add("markdown-strikethrough");
-                deleted.setStyle(previewTypographyStyle(sizeMultiplier, baseWeight,
-                        currentNote.isItalic(), currentNote.getPreviewFontFamily()));
-                applyPreviewColor(deleted);
-                flow.getChildren().add(deleted);
-            }
-            cursor = matcher.end();
+    private void openPreviewLink(String address) {
+        if (address.startsWith("voidreach-note:")) {
+            String title;
+            try { title = java.net.URLDecoder.decode(address.substring("voidreach-note:".length()), java.nio.charset.StandardCharsets.UTF_8); }
+            catch (IllegalArgumentException invalid) { editorStatus.setText("This note link has an invalid address."); return; }
+            List<Note> matches = notes.stream().filter(note -> note.getTitle().equalsIgnoreCase(title)).toList();
+            if (matches.size() == 1) open(matches.getFirst());
+            else if (matches.isEmpty()) editorStatus.setText("Note not found: " + title);
+            else editorStatus.setText("Several notes share this title. Use workspace search to choose one.");
+            return;
         }
-        if (cursor < value.length()) flow.getChildren().add(previewText(
-                value.substring(cursor), sizeMultiplier, baseWeight, currentNote.isItalic()));
-        if (value.isEmpty()) flow.getChildren().add(previewText(
-                " ", sizeMultiplier, baseWeight, currentNote.isItalic()));
-        return flow;
+        try { ExternalLinks.open(address); }
+        catch (RuntimeException failure) { editorStatus.setText("This link could not be opened. Check its address in the editor."); }
     }
 
     private void wrapSelection(String before, String after, String placeholder) {
@@ -1207,12 +1093,12 @@ public final class NotesController {
         changed();
     }
 
-    private void previewTypographyChanged() {
+    private void previewTypographyChanged(boolean colorChanged) {
         if (updatingEditor || currentNote == null || previewFontFamilyCombo.getValue() == null
                 || previewFontSizeCombo.getValue() == null || previewColorPicker.getValue() == null) return;
         currentNote.setPreviewFontFamily(previewFontFamilyCombo.getValue());
         currentNote.setPreviewFontSize(previewFontSizeCombo.getValue());
-        currentNote.setPreviewTextColor(toHex(previewColorPicker.getValue()));
+        if (colorChanged) currentNote.setPreviewTextColor(toHex(previewColorPicker.getValue()));
         if (previewToggle.isSelected()) renderPreview();
         changed();
     }
@@ -1237,7 +1123,6 @@ public final class NotesController {
         if (currentNote == null) return;
         contentArea.setStyle(typographyStyle(1.0, currentNote.getFontWeight(),
                 currentNote.isItalic(), currentNote.getFontFamily()));
-        previewContent.setStyle("-fx-font-family: \"" + cssFont(currentNote.getFontFamily()) + "\";");
         applySyntaxHighlighting();
     }
 
@@ -1245,13 +1130,9 @@ public final class NotesController {
         return fontStyle(currentNote.getFontSize(), sizeMultiplier, weight, italic, family);
     }
 
-    private String previewTypographyStyle(double sizeMultiplier, int weight, boolean italic, String family) {
-        return fontStyle(currentNote.getPreviewFontSize(), sizeMultiplier, weight, italic, family);
-    }
-
     private String fontStyle(double baseSize, double sizeMultiplier, int weight, boolean italic, String family) {
         double size = Math.round(baseSize * sizeMultiplier * 10.0) / 10.0;
-        return "-fx-font-family: \"" + cssFont(family) + "\";"
+        return "-fx-font-family: \"" + cssFont(Typography.editorFamily(family, isMarkdown(), weight)) + "\";"
                 + " -fx-font-size: " + size + "px;"
                 + " -fx-font-weight: " + weight + ";"
                 + " -fx-font-style: " + (italic ? "italic" : "normal") + ";";
@@ -1281,41 +1162,13 @@ public final class NotesController {
         }
     }
 
-    private Text previewText(String value, double sizeMultiplier, int weight, boolean italic) {
-        Text text = new Text(value);
-        text.setStyle(previewTypographyStyle(sizeMultiplier, weight,
-                italic, currentNote.getPreviewFontFamily()));
-        applyPreviewColor(text);
-        return text;
-    }
-
-    private void applyPreviewColor(Text text) {
-        setInlineFill(text, effectivePreviewColor());
-    }
-
-    private boolean hasCustomPreviewColor() {
-        return currentNote != null && !currentNote.getPreviewTextColor().isBlank();
-    }
-
-    private String effectivePreviewColor() {
-        return hasCustomPreviewColor() ? currentNote.getPreviewTextColor() : defaultPreviewColor();
-    }
-
-    private String linkColor() {
-        return themeService.activeTheme() == ThemeService.Theme.LIGHT ? "#2563EB" : "#60A5FA";
-    }
-
-    private void setInlineFill(Text text, String color) {
-        appendInlineStyle(text, "-fx-fill: " + color + ";");
-    }
-
-    private void appendInlineStyle(Node node, String css) {
-        String existing = node.getStyle();
-        node.setStyle((existing == null ? "" : existing) + " " + css);
-    }
-
     private String defaultPreviewColor() {
-        return themeService.activeTheme() == ThemeService.Theme.LIGHT ? "#334155" : "#CBD5E1";
+        return switch (themeService.activeTheme()) {
+            case LIGHT -> "#202939";
+            case DARK -> "#E7EBF2";
+            case BLUE_GRAY -> "#E6EDF8";
+            case GRAY_BLUE -> "#E6ECF2";
+        };
     }
 
     private String toHex(Color color) {
@@ -1340,9 +1193,9 @@ public final class NotesController {
     }
 
     private void changed() {
-        editorStatus.setText("Saved automatically");
+        editorStatus.setText("Unsaved changes");
         actions.dataChanged();
-        renderLibrary();
+        if (libraryPane.isVisible()) renderLibrary();
     }
 
     private boolean isMarkdown() { return currentNote != null && currentNote.getFormat() == NoteFormat.MARKDOWN; }

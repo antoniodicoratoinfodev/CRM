@@ -23,7 +23,9 @@ public class SessionService {
         Properties properties;
         try { properties = AtomicPropertiesStore.load(file, FILE_TYPE, SCHEMA_VERSION, p -> p.containsKey("email")); }
         catch (IOException e) { return Optional.empty(); }
-        return Optional.ofNullable(properties.getProperty("email")).flatMap(users::findByEmail);
+        // An email is a convenience, not an authentication token or a decryption key.
+        return Optional.ofNullable(properties.getProperty("email")).flatMap(users::findByEmail)
+                .filter(user -> !user.isVaultEnabled());
     }
     public void remember(UserAccount user) {
         Properties properties = new Properties(); properties.setProperty(AtomicPropertiesStore.SCHEMA_VERSION_KEY, String.valueOf(SCHEMA_VERSION)); properties.setProperty(AtomicPropertiesStore.FILE_TYPE_KEY, FILE_TYPE); properties.setProperty("email", user.getEmail());

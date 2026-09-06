@@ -17,6 +17,7 @@ public class Contact {
     private final StringProperty description;
     private final Map<String, StringProperty> customFields = new LinkedHashMap<>();
     private final String id;
+    private final java.util.List<ContactInteraction> interactions = new java.util.ArrayList<>();
 
     public Contact(String name, String company, String title, String email, String phone, String lastInteraction, String tags, String description) {
         this(UUID.randomUUID().toString(), name, company, title, email, phone, lastInteraction, tags, description);
@@ -43,6 +44,15 @@ public class Contact {
     public StringProperty tagsProperty() { return tags; }
     public StringProperty descriptionProperty() { return description; }
     public String getId() { return id; }
+    public java.util.List<ContactInteraction> getInteractions() { return java.util.List.copyOf(interactions); }
+    public void setInteractions(java.util.Collection<ContactInteraction> values) {
+        interactions.clear(); interactions.addAll(values);
+    }
+    public void addInteraction(ContactInteraction interaction) {
+        interactions.add(interaction);
+        interactions.sort(java.util.Comparator.comparing(ContactInteraction::date).reversed());
+        setLastInteraction(interactions.getFirst().date().toString());
+    }
 
     public void setName(String value) { this.name.set(value); }
     public void setCompany(String value) { this.company.set(value); }

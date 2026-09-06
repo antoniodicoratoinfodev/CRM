@@ -33,7 +33,6 @@ import javax.imageio.ImageIO;
 
 public class Main extends Application {
 
-    private static final String APP_ICON_PATH = "/images/app-icon.png";
 
     private Stage mainStage;
     private Stage splashStage;
@@ -41,14 +40,24 @@ public class Main extends Application {
     private Parent loginRoot;
     private LoginController loginController;
     private MainController rememberedAppController;
+    private MainController activeController;
     private UserAccount rememberedUser;
     private PreloadedAvatars rememberedAvatars;
     private final SessionService sessionService = new SessionService(new LocalUserRepository());
 
     @Override
     public void start(Stage primaryStage) throws Exception {
-        Locale.setDefault(Locale.ENGLISH);
+        com.crm.service.Typography.load();
+        com.crm.service.ExternalLinks.setOpener(getHostServices()::showDocument);
         this.mainStage = primaryStage;
+        primaryStage.setOnCloseRequest(event -> {
+            if (activeController == null) return;
+            event.consume();
+            activeController.requestClose(() -> {
+                activeController = null;
+                primaryStage.close();
+            });
+        });
         configureMacDockIcon();
         showSplashScreen();
     }
@@ -63,7 +72,8 @@ public class Main extends Application {
         splashStage.setAlwaysOnTop(true);
         Scene scene = new Scene(root);
         scene.setFill(Color.TRANSPARENT);
-        scene.getStylesheets().add(getClass().getResource("/css/style-dark.css").toExternalForm());
+        scene.getStylesheets().addAll(getClass().getResource("/css/style-dark.css").toExternalForm(),
+                getClass().getResource("/css/typography.css").toExternalForm());
         splashStage.setScene(scene);
         
         addAppIcon(splashStage);
@@ -82,7 +92,6 @@ public class Main extends Application {
                 // 1. Core Initialization
                 updateMessage("Core Initialization...");
                 updateProgress(0.1, 1.0);
-                Thread.sleep(400); 
 
                 // 2. Authentication and session loading
                 updateMessage("Checking saved session...");
@@ -96,17 +105,14 @@ public class Main extends Application {
                     updateMessage("Loading your workspace...");
                 }
                 updateProgress(0.6, 1.0);
-                Thread.sleep(300);
 
                 // 3. Database and Model Setup
                 updateMessage("Preparing local account storage...");
                 updateProgress(0.8, 1.0);
-                Thread.sleep(400);
 
                 // 4. Finalization
                 updateMessage("Interface Optimization...");
                 updateProgress(1.0, 1.0);
-                Thread.sleep(300);
 
                 return new StartupData(savedUser, avatars);
             }
@@ -158,7 +164,8 @@ public class Main extends Application {
         
         Scene scene = new Scene(loginRoot);
         scene.setFill(Color.web("#0f172a"));
-        scene.getStylesheets().add(getClass().getResource("/css/style-dark.css").toExternalForm());
+        scene.getStylesheets().addAll(getClass().getResource("/css/style-dark.css").toExternalForm(),
+                getClass().getResource("/css/typography.css").toExternalForm());
         
         mainStage.setScene(scene);
         mainStage.setMaximized(false);
@@ -170,11 +177,11 @@ public class Main extends Application {
 
     private void transitionToRememberedApp(Parent root) {
         if (root == null || rememberedAppController == null) return;
+        activeController = rememberedAppController;
         mainStage.setTitle("VoidReach CRM");
         addAppIcon(mainStage);
         Scene scene = new Scene(root);
         scene.setFill(Color.web("#0f172a"));
-        scene.getStylesheets().add(getClass().getResource("/css/style-dark.css").toExternalForm());
         mainStage.setScene(scene);
         mainStage.setMaximized(true);
         Screen startupScreen = Screen.getPrimary();
@@ -211,10 +218,10 @@ public class Main extends Application {
             FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/crm/view/MainView.fxml"));
             Parent root = loader.load();
             MainController controller = loader.getController();
+            activeController = controller;
             controller.setCurrentUser(user, this::logout);
             Scene scene = new Scene(root);
             scene.setFill(Color.web("#0f172a"));
-            scene.getStylesheets().add(getClass().getResource("/css/style-dark.css").toExternalForm());
             mainStage.setTitle("VoidReach CRM");
             addAppIcon(mainStage);
             mainStage.setScene(scene);
@@ -229,13 +236,15 @@ public class Main extends Application {
     }
 
     private void showLoginScreen() {
+        activeController = null;
         mainStage.setTitle("VoidReach CRM — Sign in");
         // The login scene is retained for the application's lifetime; reset its form state on every logout.
         loginController.resetForLoginScreen();
         configureLoginHandler();
         Scene loginScene = new Scene(loginRoot);
         loginScene.setFill(Color.web("#0f172a"));
-        loginScene.getStylesheets().add(getClass().getResource("/css/style-dark.css").toExternalForm());
+        loginScene.getStylesheets().addAll(getClass().getResource("/css/style-dark.css").toExternalForm(),
+                getClass().getResource("/css/typography.css").toExternalForm());
         mainStage.setScene(loginScene);
         mainStage.setMaximized(false);
         mainStage.setWidth(580);
@@ -310,6 +319,7 @@ public class Main extends Application {
     }
 
     private void showMainStage(Runnable focusTarget) {
+        addAppIcon(mainStage);
         if (mainStage.isShowing()) {
             closeSplashStage();
             mainStage.setOpacity(1.0);
@@ -383,10 +393,8 @@ public class Main extends Application {
     private record StartupData(UserAccount user, PreloadedAvatars avatars) {}
 
     private void addAppIcon(Stage stage) {
-        if (stage == null || stage.getIcons().isEmpty()) {
-            Image icon = new Image(getClass().getResourceAsStream(APP_ICON_PATH));
-            if (stage != null) stage.getIcons().add(icon);
-        }
+        if (stage != null) stage.getIcons().setAll(com.crm.view.BrandMark.icon(com.crm.view.BrandMark.selectedIcon(), 32),
+                com.crm.view.BrandMark.icon(com.crm.view.BrandMark.selectedIcon(), 128));
     }
 
     private void configureMacDockIcon() {
@@ -396,8 +404,8 @@ public class Main extends Application {
         Taskbar taskbar = Taskbar.getTaskbar();
         if (!taskbar.isSupported(Taskbar.Feature.ICON_IMAGE)) return;
 
-        try (InputStream icon = getClass().getResourceAsStream(APP_ICON_PATH)) {
-            if (icon != null) taskbar.setIconImage(ImageIO.read(icon));
+        try {
+            taskbar.setIconImage(javafx.embed.swing.SwingFXUtils.fromFXImage(com.crm.view.BrandMark.icon(com.crm.view.BrandMark.selectedIcon(), 256), null));
         } catch (Exception ignored) {
             // The JavaFX stage icon still applies if macOS does not allow changing the Dock icon.
         }

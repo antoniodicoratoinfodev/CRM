@@ -53,6 +53,9 @@ public final class ContactsController {
     private final Button addFieldButton;
     private final ThemeService themeService;
     private final Runnable dataChanged;
+    private java.util.function.Consumer<Contact> openDetails = this::showContactDialog;
+    public void setOpenDetails(java.util.function.Consumer<Contact> action) { openDetails = action; }
+    public void editRecord(Contact contact) { showContactDialog(contact); }
     private final ObservableList<Contact> contacts = FXCollections.observableArrayList();
     private final FilteredList<Contact> filteredContacts = new FilteredList<>(contacts, contact -> true);
     private final SortedList<Contact> sortedContacts = new SortedList<>(filteredContacts);
@@ -111,7 +114,7 @@ public final class ContactsController {
                 boolean openRequest = event.getButton() == MouseButton.SECONDARY
                         || !inlineEditMode() && event.getButton() == MouseButton.PRIMARY && event.getClickCount() >= 1;
                 if (!selectionMode && openRequest && !row.isEmpty()) {
-                    showContactDialog(row.getItem());
+                    openDetails.accept(row.getItem());
                     event.consume();
                 }
             });
@@ -146,6 +149,11 @@ public final class ContactsController {
     public void addContact() {
         if (inlineEditMode()) addContactInline();
         else showContactDialog(null);
+    }
+
+    public void openById(String contactId) {
+        contacts.stream().filter(contact -> contact.getId().equals(contactId))
+                .findFirst().ifPresent(openDetails);
     }
 
     /** Quick-edit variant of "New contact": inserts an empty row and starts editing its name in place. */
@@ -184,7 +192,7 @@ public final class ContactsController {
         alert.setHeaderText(selected.size() == 1
                 ? "Delete " + selected.getFirst().nameProperty().get() + "?"
                 : "Delete " + selected.size() + " contacts?");
-        alert.setContentText("This action cannot be undone.");
+        alert.setContentText("You can restore these contacts from History → Recently deleted.");
         if (alert.showAndWait().filter(result -> result == ButtonType.OK).isPresent()) {
             contacts.removeAll(selected);
             checkedContacts.removeAll(selected);
@@ -761,8 +769,13 @@ public final class ContactsController {
         GridPane grid = new GridPane();
         grid.setHgap(10);
         grid.setVgap(10);
-        grid.setPadding(new javafx.geometry.Insets(20, 150, 10, 10));
+        grid.setPadding(new javafx.geometry.Insets(12));
+        grid.setPrefWidth(480);
+        javafx.scene.layout.ColumnConstraints labels = new javafx.scene.layout.ColumnConstraints(); labels.setMinWidth(85);
+        javafx.scene.layout.ColumnConstraints fields = new javafx.scene.layout.ColumnConstraints(); fields.setHgrow(javafx.scene.layout.Priority.ALWAYS);
+        grid.getColumnConstraints().setAll(labels, fields);
         TextField name = new TextField();
+        name.setId("contactNameField"); name.setPromptText("Full name (required)");
         TextField company = new TextField();
         TextField title = new TextField();
         TextField email = new TextField();
@@ -819,7 +832,16 @@ public final class ContactsController {
             }
             editor.requestFocus();
         }));
-        dialog.getDialogPane().setContent(grid);
+        Label error = new Label(); error.setWrapText(true); error.getStyleClass().add("form-error"); error.setId("contactValidationError");
+        javafx.scene.control.ScrollPane scroll = new javafx.scene.control.ScrollPane(grid); scroll.setFitToWidth(true); scroll.setPrefViewportHeight(430);
+        javafx.scene.layout.VBox content = new javafx.scene.layout.VBox(10, scroll, error); content.getStyleClass().add("event-editor");
+        dialog.getDialogPane().setContent(content);
+        dialog.getDialogPane().lookupButton(save).addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
+            if (name.getText().isBlank()) { error.setText("Enter a name for this contact."); event.consume(); name.requestFocus(); }
+            else if (!email.getText().isBlank() && !email.getText().trim().matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
+                error.setText("Enter a valid email address, or leave email empty."); event.consume(); email.requestFocus();
+            }
+        });
         dialog.setResultConverter(result -> {
             if (result != save) return null;
             String tagValue = tagStorageValue(tags.getValue());

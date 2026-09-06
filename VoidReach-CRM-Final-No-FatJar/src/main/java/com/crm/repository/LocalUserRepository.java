@@ -53,6 +53,10 @@ public class LocalUserRepository implements UserRepository {
         put(properties, prefix + "resetCodeExpiresAt", user.getResetCodeExpiresAt() == null ? null : user.getResetCodeExpiresAt().toString());
         put(properties, prefix + "avatarFileName", user.getAvatarFileName());
         put(properties, prefix + "preferredTheme", user.getPreferredTheme());
+        put(properties, prefix + "preferredIcon", user.getPreferredIcon());
+        put(properties, prefix + "vaultConfig", user.getVaultConfig());
+        put(properties, prefix + "recoveryVerifier", user.getRecoveryVerifier());
+        put(properties, prefix + "vaultMigrated", String.valueOf(user.isVaultMigrated()));
         try {
             AtomicPropertiesStore.store(file, properties, "VoidReach CRM local users");
         } catch (IOException e) {
@@ -102,6 +106,10 @@ public class LocalUserRepository implements UserRepository {
         user.setAvatarFileName(optionalValue(properties, prefix + "avatarFileName"));
         String preferredTheme = optionalValue(properties, prefix + "preferredTheme");
         if (preferredTheme != null && !preferredTheme.isBlank()) user.setPreferredTheme(preferredTheme);
+        user.setPreferredIcon(optionalValue(properties, prefix + "preferredIcon"));
+        user.setVaultConfig(optionalValue(properties, prefix + "vaultConfig"));
+        user.setRecoveryVerifier(optionalValue(properties, prefix + "recoveryVerifier"));
+        user.setVaultMigrated(Boolean.parseBoolean(optionalValue(properties, prefix + "vaultMigrated")));
         return user;
     }
 

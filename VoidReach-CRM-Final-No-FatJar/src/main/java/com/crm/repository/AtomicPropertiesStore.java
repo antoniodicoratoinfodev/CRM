@@ -56,6 +56,15 @@ public final class AtomicPropertiesStore {
 
     public static Path backupPath(Path target) { return target.resolveSibling(target.getFileName() + ".bak"); }
 
+    /** Atomic re-encryption of an existing, verified file without creating a new plaintext backup. */
+    public static void storeReencrypted(Path target, Properties properties) throws IOException {
+        Path directory = target.toAbsolutePath().getParent();
+        if (directory == null || !Files.isRegularFile(target)) throw new IOException("An existing file is required for re-encryption.");
+        Path temporary = Files.createTempFile(directory, ".voidreach-rekey-", ".tmp");
+        try { writeAndSync(temporary, properties, "VoidReach encrypted local data"); moveReplacing(temporary, target); }
+        finally { Files.deleteIfExists(temporary); }
+    }
+
     private static Properties readAndValidate(Path path, String expectedType, int currentSchema, Predicate<Properties> legacyFormat) throws IOException {
         Properties properties = new Properties();
         try (InputStream input = Files.newInputStream(path)) { properties.load(input); }

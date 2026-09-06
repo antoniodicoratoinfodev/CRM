@@ -15,7 +15,32 @@ public record CrmDataSnapshot(
         String calendarViewMode,
         double calendarZoom,
         List<String> contactCustomFields,
-        boolean contactsQuickEdit) {
+        boolean contactsQuickEdit,
+        Map<String, String> preferences,
+        CrmTrash trash) {
+
+    public CrmDataSnapshot {
+        preferences = preferences == null ? Map.of() : Map.copyOf(preferences);
+        trash = trash == null ? CrmTrash.EMPTY : trash;
+    }
+
+    public CrmDataSnapshot(List<Contact> contacts, Map<LocalDate, List<Task>> tasksByDate,
+                           List<Note> notes, List<NoteFolder> noteFolders, LocalDate selectedDate,
+                           String calendarViewMode, double calendarZoom, List<String> contactCustomFields,
+                           boolean contactsQuickEdit) {
+        this(contacts, tasksByDate, notes, noteFolders, selectedDate, calendarViewMode, calendarZoom,
+                contactCustomFields, contactsQuickEdit, Map.of(), CrmTrash.EMPTY);
+    }
+
+    public CrmDataSnapshot withExtras(Map<String, String> preferences, CrmTrash trash) {
+        return new CrmDataSnapshot(contacts, tasksByDate, notes, noteFolders, selectedDate, calendarViewMode,
+                calendarZoom, contactCustomFields, contactsQuickEdit, preferences, trash);
+    }
+
+    public CrmDataSnapshot detached() {
+        return detachedCopyOf(contacts, tasksByDate, notes, noteFolders, selectedDate, calendarViewMode,
+                calendarZoom, contactCustomFields, contactsQuickEdit).withExtras(preferences, trash.detached(contactCustomFields));
+    }
 
     public CrmDataSnapshot(List<Contact> contacts, Map<LocalDate, List<Task>> tasksByDate,
                            List<Note> notes, List<NoteFolder> noteFolders, LocalDate selectedDate,
@@ -73,22 +98,26 @@ public record CrmDataSnapshot(
                             contact.lastInteractionProperty().get(), contact.tagsProperty().get(),
                             contact.descriptionProperty().get());
                     for (String field : contactCustomFields) copy.setCustomField(field, contact.customFieldValue(field));
+                    copy.setInteractions(contact.getInteractions());
                     return copy;
                 })
                 .toList();
 
         Map<LocalDate, List<Task>> copiedTasks = new LinkedHashMap<>();
         tasksByDate.forEach((date, tasks) -> copiedTasks.put(date, tasks.stream()
-                .map(task -> new Task(task.getId(), task.getTitle(), task.getDescription(),
-                        task.getStartMin(), task.getDuration(), task.getColor(), task.isCompleted()))
+                .map(Task::copy)
                 .toList()));
 
         List<Note> copiedNotes = notes.stream()
-                .map(note -> new Note(note.getId(), note.getTitle(), note.getContent(),
+                .map(note -> {
+                    Note copy = new Note(note.getId(), note.getTitle(), note.getContent(),
                         note.getFormat(), note.getLinkedTaskIds(), note.getFontFamily(),
                         note.getFontSize(), note.getFontWeight(), note.isItalic(),
                         note.getPreviewFontFamily(), note.getPreviewFontSize(), note.getPreviewTextColor(),
-                        note.getFolderId()))
+                        note.getFolderId());
+                    copy.setContactId(note.getContactId());
+                    return copy;
+                })
                 .toList();
 
         List<NoteFolder> copiedFolders = noteFolders.stream()

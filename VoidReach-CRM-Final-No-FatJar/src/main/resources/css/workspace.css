@@ -1,0 +1,347 @@
+/* Shared workspace presentation. Each theme supplies the -vr-* palette. */
+.markdown-reading-view { -fx-background-color: -vr-surface; -fx-border-color: -vr-border; -fx-border-radius: 8; }
+.reading-toolbar { -fx-padding: 6 14; -fx-background-color: -vr-surface; -fx-border-color: -vr-border; -fx-border-width: 0 0 1 0; }
+.reading-status { -fx-text-fill: -vr-muted; }
+.calendar-period-title { -fx-text-fill: -vr-text; }
+.calendar-toolbar-v2 { -fx-padding: 4 0 8 0; -fx-alignment: center-left; }
+.calendar-fixed-headers, .calendar-all-day-row { -fx-background-color: -vr-surface; -fx-border-color: -vr-border; -fx-border-width: 0 0 1 0; }
+.calendar-day-heading { -fx-background-color: transparent; -fx-text-fill: -vr-muted; -fx-padding: 8 2; }
+.calendar-day-heading:hover, .calendar-heading-today { -fx-background-color: -vr-accent-soft; -fx-text-fill: -vr-accent; }
+.calendar-all-day-row { -fx-padding: 4 0; }
+.calendar-all-day-caption { -fx-text-fill: -vr-muted; -fx-alignment: center; }
+.calendar-scroll, .calendar-scroll > .viewport, .timeline-area, .time-column { -fx-background-color: -vr-raised; -fx-background: -vr-raised; -fx-border-width: 0; -fx-effect: null; }
+.calendar-working-hours { -fx-background-color: -vr-surface; }
+.calendar-hour-line, .calendar-day-divider { -fx-background-color: -vr-border; }
+.calendar-minute-line { -fx-background-color: -vr-border; -fx-opacity: 0.32; }
+.calendar-now-line { -fx-background-color: -vr-danger; }
+.calendar-time-label { -fx-text-fill: -vr-muted; }
+.calendar-event-v2 { -fx-padding: 6 8; -fx-background-radius: 6; -fx-border-radius: 6; -fx-border-width: 0 0 0 3; -fx-effect: null; }
+.calendar-event-v2 .task-title { -fx-text-fill: -vr-text; }
+.calendar-event-v2 .task-time { -fx-text-fill: -vr-muted; }
+.calendar-event-v2:focused { -fx-border-color: -vr-accent; -fx-border-width: 2; }
+.calendar-range-selection { -fx-background-color: -vr-accent-soft; -fx-border-color: -vr-accent; -fx-border-radius: 5; -fx-background-radius: 5; }
+.calendar-all-day-event, .calendar-month-event { -fx-padding: 4 6; -fx-alignment: center-left; -fx-background-radius: 4; -fx-text-fill: -vr-text; }
+.calendar-all-day-event, .calendar-month-event { -fx-border-width: 0 0 0 2; -fx-border-radius: 4; }
+.titled-pane { -fx-text-fill: -vr-text; }
+.titled-pane > .title { -fx-background-color: -vr-raised; -fx-background-radius: 6; -fx-padding: 10 12; }
+.titled-pane > .title > .text { -fx-fill: -vr-text; }
+.titled-pane > .title > .arrow-button > .arrow { -fx-background-color: -vr-muted; }
+.titled-pane > .content { -fx-background-color: -vr-surface; -fx-border-color: -vr-border; -fx-padding: 10; }
+
+.calendar-alternate, .calendar-alternate > .viewport { -fx-background: -vr-canvas; -fx-background-color: -vr-canvas; -fx-border-width: 0; }
+.calendar-month-cell { -fx-background-color: -vr-surface; -fx-border-color: -vr-border; -fx-border-width: 0 1 1 0; -fx-padding: 7; }
+.calendar-month-outside { -fx-background-color: -vr-raised; }
+.calendar-month-today { -fx-background-color: -vr-accent-soft; }
+.calendar-month-date { -fx-background-color: transparent; -fx-text-fill: -vr-muted; -fx-padding: 2; }
+.calendar-agenda-event { -fx-background-color: -vr-surface; -fx-text-fill: -vr-text; -fx-alignment: center-left; -fx-padding: 16; }
+.event-editor { -fx-padding: 20; -fx-background-color: -vr-surface; }
+.event-editor-title { -fx-pref-height: 46; }
+.field-caption { -fx-text-fill: -vr-muted; }
+.workspace-history-menu, .calendar-more { -fx-background-color: transparent; -fx-text-fill: -vr-muted; -fx-padding: 7; }
+.workspace-history-menu { -fx-min-width: 104; }
+.contact-profile { -fx-padding: 22; -fx-background-color: -vr-surface; }
+.contact-profile-tab { -fx-padding: 16; -fx-background-color: -vr-surface; }
+.contact-profile .scroll-pane, .contact-profile .scroll-pane > .viewport { -fx-background-color: -vr-surface; -fx-background: -vr-surface; }
+.contact-timeline-entry { -fx-padding: 12; -fx-background-color: -vr-raised; -fx-background-radius: 7; }
+.contact-linked-record { -fx-alignment: center-left; -fx-padding: 12; }
+.note-appearance-disclosure > .title { -fx-background-color: transparent; -fx-padding: 6 0; }
+.note-appearance-disclosure > .content { -fx-background-color: -vr-raised; -fx-border-color: -vr-border; -fx-padding: 8; }
+.note-editor-link-row { -fx-padding: 4 0; }
+.form-error { -fx-text-fill: -vr-danger; }
+.editor-scroll, .editor-scroll > .viewport { -fx-background-color: -vr-surface; -fx-background: -vr-surface; -fx-border-width: 0; }
+.event-editor .titled-pane > .title { -fx-background-color: -vr-raised; -fx-padding: 10; }
+.event-editor .titled-pane > .content { -fx-background-color: -vr-surface; -fx-border-color: -vr-border; -fx-padding: 12; }
+.dialog-pane { -fx-background-color: -vr-surface; -fx-padding: 12; }
+.dialog-pane .label { -fx-text-fill: -vr-text; }
+.dialog-pane .form-error { -fx-text-fill: -vr-danger; }
+
+.dialog-pane .text-area .content { -fx-background-color: -vr-raised; -fx-background-radius: 6; }
+.root {
+
+    -fx-focus-color: -vr-accent;
+    -fx-faint-focus-color: transparent;
+}
+.app-shell, .main-surface, .content-area, .calendar-container, .generic-view,
+.notes-view, .notes-library, .note-editor, .settings-view,
+.overview-scroll, .overview-scroll > .viewport, .settings-scroll, .settings-scroll > .viewport {
+    -fx-background-color: -vr-canvas;
+    -fx-background: -vr-canvas;
+}
+.sidebar {
+    -fx-background-color: -vr-sidebar;
+    -fx-effect: null;
+    -fx-padding: 22 12 18 12;
+}
+.sidebar-resize-handle { -fx-background-color: transparent; }
+.sidebar-resize-handle:hover, .sidebar-resize-handle:pressed { -fx-background-color: -vr-accent; }
+.brand-lockup { -fx-padding: 0 8 30 8; }
+.brand-title { -fx-text-fill: -vr-text; }
+.brand-caption, .nav-section-label { -fx-text-fill: -vr-muted; }
+.nav-section-label { -fx-padding: 0 12 10 12; }
+.sidebar-button {
+    -fx-pref-height: 40;
+
+    -fx-text-fill: -vr-muted;
+    -fx-background-radius: 7;
+    -fx-graphic-text-gap: 12;
+}
+.nav-icon { -fx-icon-color: -vr-muted; -fx-icon-size: 15; }
+.sidebar-button:hover { -fx-background-color: -vr-hover; -fx-text-fill: -vr-text; }
+.sidebar-button:hover .nav-icon { -fx-icon-color: -vr-text; }
+.sidebar-button.sidebar-button-active, .sidebar-button.sidebar-button-active:hover {
+    -fx-background-color: -vr-accent-soft;
+    -fx-background-insets: 0;
+    -fx-background-radius: 7;
+    -fx-text-fill: -vr-accent;
+
+}
+.sidebar-button-active .nav-icon { -fx-icon-color: -vr-accent; }
+.nav-separator .line { -fx-border-color: -vr-border; }
+.navbar {
+    -fx-background-color: -vr-canvas;
+    -fx-border-color: -vr-border;
+    -fx-padding: 0 24;
+}
+.navbar-status-group { -fx-translate-y: 0; -fx-min-width: 92; }
+.topbar-title { -fx-text-fill: -vr-text; }
+.save-status, .account-caption { -fx-text-fill: -vr-muted; }
+.toolbar-icon { -fx-icon-color: -vr-muted; }
+.icon-button { -fx-background-radius: 7; }
+.icon-button:hover, .account-menu-button:hover { -fx-background-color: -vr-hover; }
+.icon-button:hover .toolbar-icon { -fx-icon-color: -vr-text; }
+.account-name { -fx-text-fill: -vr-text; }
+.avatar-frame { -fx-background-color: -vr-raised; -fx-border-color: -vr-border; }
+.avatar-placeholder { -fx-icon-color: -vr-muted; }
+.workspace-search-button {
+    -fx-min-height: 34;
+    -fx-padding: 0 11;
+    -fx-alignment: CENTER_LEFT;
+    -fx-content-display: GRAPHIC_ONLY;
+    -fx-background-color: -vr-surface;
+    -fx-border-color: -vr-border;
+    -fx-border-radius: 7;
+    -fx-background-radius: 7;
+    -fx-cursor: hand;
+}
+.workspace-search-button:hover { -fx-border-color: -vr-accent; }
+.workspace-search-prompt { -fx-text-fill: -vr-muted; }
+.keyboard-shortcut {
+    -fx-text-fill: -vr-muted;
+
+    -fx-background-color: -vr-raised;
+    -fx-border-color: -vr-border;
+    -fx-background-radius: 4;
+    -fx-border-radius: 4;
+    -fx-padding: 2 5;
+}
+.reminder-count {
+    -fx-background-color: -vr-primary;
+    -fx-text-fill: white;
+
+    -fx-background-radius: 10;
+    -fx-min-width: 14;
+    -fx-alignment: CENTER;
+    -fx-padding: 1 3;
+    -fx-translate-x: 7;
+    -fx-translate-y: -7;
+}
+.content-area, .calendar-container, .settings-view { -fx-padding: 26 28 24 28; }
+.overview-view, .tasks-view { -fx-min-width: 0; }
+.section-title { -fx-text-fill: -vr-text; }
+.section-subtitle { -fx-text-fill: -vr-muted; }
+.page-eyebrow { -fx-text-fill: -vr-muted; }
+.btn-primary {
+    -fx-min-height: 36;
+    -fx-padding: 0 15;
+    -fx-background-color: -vr-primary;
+    -fx-background-radius: 7;
+    -fx-text-fill: white;
+
+    -fx-effect: null;
+}
+.btn-primary:hover { -fx-background-color: -vr-primary-hover; }
+.btn-secondary, .btn-today {
+    -fx-min-height: 36;
+    -fx-background-color: -vr-surface;
+    -fx-border-color: -vr-border;
+    -fx-border-width: 1;
+    -fx-background-radius: 7;
+    -fx-border-radius: 7;
+    -fx-text-fill: -vr-text;
+
+    -fx-graphic-text-gap: 8;
+}
+.btn-secondary:hover, .btn-today:hover { -fx-background-color: -vr-hover; -fx-border-color: -vr-muted; }
+.danger-button { -fx-text-fill: -vr-danger; }
+.text-button { -fx-text-fill: -vr-accent; }
+.metrics-strip {
+    -fx-background-color: -vr-surface;
+    -fx-background-radius: 10;
+    -fx-border-color: -vr-border;
+    -fx-border-radius: 10;
+    -fx-padding: 14 0;
+}
+.metrics-strip > .metric-card {
+    -fx-background-color: transparent;
+    -fx-border-color: -vr-border;
+    -fx-border-width: 0 1 0 0;
+    -fx-border-radius: 0;
+    -fx-effect: null;
+    -fx-padding: 0 18;
+    -fx-spacing: 6;
+    -fx-min-width: 0;
+    -fx-pref-width: 0;
+    -fx-max-width: infinity;
+    -fx-min-height: 86;
+}
+.metrics-strip > .metric-last, .metrics-strip > .next-activity-card { -fx-border-width: 0; }
+.metric-label { -fx-text-fill: -vr-muted; }
+.metric-value { -fx-text-fill: -vr-text; }
+.metric-caption { -fx-text-fill: -vr-muted; }
+.next-activity-title { -fx-text-fill: -vr-text; }
+.task-metric-chip { -fx-min-width: 20; -fx-pref-width: 20; -fx-min-height: 20; -fx-pref-height: 20; -fx-background-color: transparent; }
+.task-metric-chip .ikonli-font-icon { -fx-icon-color: -vr-muted; }
+.focus-summary {
+    -fx-background-color: -vr-surface;
+    -fx-border-color: -vr-border;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 14 16;
+}
+.focus-summary-icon { -fx-icon-color: -vr-success; }
+.focus-summary-title { -fx-text-fill: -vr-text; }
+.focus-summary-detail { -fx-text-fill: -vr-muted; }
+.focus-summary:attention { -fx-background-color: -vr-warning-soft; -fx-border-color: transparent; }
+.focus-summary:attention .focus-summary-icon { -fx-icon-color: -vr-warning; }
+.focus-summary:attention .focus-summary-title { -fx-text-fill: -vr-warning; }
+.overview-card, .data-card, .note-card, .note-folder-card, .settings-card, .settings-theme-card {
+    -fx-background-color: -vr-surface;
+    -fx-border-color: -vr-border;
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+    -fx-effect: null;
+}
+.overview-card { -fx-padding: 18; }
+.overview-card-title, .panel-title, .panel-section-title { -fx-text-fill: -vr-text; }
+
+.overview-card-subtitle, .overview-card-kicker { -fx-text-fill: -vr-muted; }
+.overview-list-row {
+    -fx-background-color: transparent;
+    -fx-border-color: -vr-border;
+    -fx-border-width: 0 0 1 0;
+    -fx-background-radius: 6;
+    -fx-padding: 11 8;
+    -fx-cursor: hand;
+}
+.overview-list-row:hover { -fx-background-color: -vr-hover; }
+.overview-item-title { -fx-text-fill: -vr-text; }
+.overview-item-subtitle { -fx-text-fill: -vr-muted; }
+.overview-row-completed .overview-item-title { -fx-text-fill: -vr-muted; }
+.overview-row-completed .overview-item-title .text { -fx-strikethrough: true; }
+.overview-tag, .contact-initial { -fx-background-color: -vr-raised; -fx-text-fill: -vr-muted; }
+.overview-empty, .tasks-empty, .notes-empty, .empty-activities { -fx-text-fill: -vr-muted; }
+.toolbar-card { -fx-background-color: transparent; -fx-border-color: transparent; -fx-effect: null; -fx-padding: 0 0 2 0; }
+.search-bar, .combo-box, .date-picker {
+    -fx-background-color: -vr-surface;
+    -fx-border-color: -vr-border;
+    -fx-text-fill: -vr-text;
+    -fx-prompt-text-fill: -vr-muted;
+}
+.table-view { -fx-background-color: -vr-surface; -fx-border-color: -vr-border; }
+.table-view .column-header-background, .table-view .column-header-background .filler {
+    -fx-background-color: -vr-raised;
+    -fx-border-color: -vr-border;
+}
+.table-view .column-header { -fx-border-color: -vr-border; }
+.table-view .column-header .label { -fx-text-fill: -vr-muted; }
+.table-row-cell:filled, .table-row-cell:filled:odd {
+    -fx-background-color: -vr-surface;
+    -fx-border-color: -vr-border;
+    -fx-border-width: 0 0 1 0;
+}
+.table-row-cell:filled:hover { -fx-background-color: -vr-hover; }
+.table-row-cell:filled:selected { -fx-background-color: -vr-accent-soft; }
+.table-row-cell:empty { -fx-background-color: -vr-surface; -fx-border-color: transparent; }
+.table-cell, .table-row-cell:selected .text { -fx-text-fill: -vr-text; -fx-fill: -vr-text; }
+.task-list-card { -fx-padding: 8 14; }
+.task-date-header-title, .task-date-header-past .task-date-header-title { -fx-text-fill: -vr-muted; }
+.task-date-header-date { -fx-text-fill: -vr-muted; }
+.task-date-header-count { -fx-background-color: transparent; -fx-text-fill: -vr-muted; }
+.task-list-row {
+    -fx-background-color: transparent;
+    -fx-border-color: -vr-border;
+    -fx-border-width: 0 0 1 0;
+    -fx-border-radius: 0;
+    -fx-padding: 14 8;
+    -fx-background-radius: 6;
+}
+.task-list-row:hover { -fx-background-color: -vr-hover; -fx-border-color: -vr-border; }
+.task-list-title { -fx-text-fill: -vr-text; }
+.task-list-description, .task-list-time { -fx-text-fill: -vr-muted; }
+.task-time-chip { -fx-background-color: transparent; -fx-padding: 4 0; }
+.task-icon-button .ikonli-font-icon, .task-time-icon { -fx-icon-color: -vr-muted; }
+.task-icon-button:hover { -fx-background-color: -vr-raised; }
+.task-icon-button.task-delete-button .ikonli-font-icon { -fx-icon-color: -vr-danger; }
+
+.task-status-planned { -fx-background-color: -vr-raised; -fx-text-fill: -vr-muted; }
+.task-status-today { -fx-background-color: -vr-accent-soft; -fx-text-fill: -vr-accent; }
+.task-status-overdue { -fx-background-color: -vr-warning-soft; -fx-text-fill: -vr-warning; }
+.right-panel { -fx-background-color: -vr-surface; -fx-border-color: -vr-border; -fx-padding: 24 20; }
+.panel-icon-wrap { -fx-background-color: -vr-accent-soft; -fx-background-radius: 8; }
+.accent-icon { -fx-icon-color: -vr-accent; }
+.panel-subtitle { -fx-text-fill: -vr-muted; }
+.mini-calendar-container { -fx-background-color: transparent; -fx-border-color: transparent; -fx-padding: 6 0; }
+.mini-month-title { -fx-text-fill: -vr-text; }
+.calendar-day, .calendar-day-header { -fx-text-fill: -vr-muted; }
+.calendar-day:hover { -fx-background-color: -vr-hover; -fx-text-fill: -vr-text; }
+.calendar-day-selected, .calendar-day-selected:hover { -fx-background-color: -vr-primary; -fx-text-fill: white; }
+.calendar-day-today { -fx-border-color: -vr-accent; -fx-text-fill: -vr-accent; }
+.calendar-day-selected.calendar-day-today { -fx-text-fill: white; }
+.activity-item { -fx-background-color: -vr-raised; -fx-border-color: transparent; -fx-background-radius: 7; -fx-padding: 12; }
+.activity-item:hover { -fx-background-color: -vr-hover; -fx-border-color: -vr-border; }
+.activity-title { -fx-text-fill: -vr-text; }
+.activity-time { -fx-text-fill: -vr-muted; }
+.notes-breadcrumb-bar { -fx-background-color: transparent; -fx-border-color: -vr-border; }
+.note-card-title, .note-folder-title { -fx-text-fill: -vr-text; }
+.note-card-excerpt, .note-folder-count { -fx-text-fill: -vr-muted; }
+.note-card:hover { -fx-border-color: -vr-accent; -fx-effect: null; }
+.settings-card-title, .settings-account-name, .settings-theme-title { -fx-text-fill: -vr-text; }
+.settings-caption, .settings-card-copy, .settings-theme-status, .settings-account-email { -fx-text-fill: -vr-muted; }
+.settings-theme-card:hover { -fx-background-color: -vr-hover; -fx-border-color: -vr-muted; }
+.settings-theme-card.settings-theme-active { -fx-background-color: -vr-accent-soft; -fx-border-color: -vr-accent; }
+.button:focused, .overview-list-row:focused, .workspace-search-button:focused {
+    -fx-border-color: -vr-accent;
+    -fx-border-width: 1;
+    -fx-border-radius: 7;
+    -fx-border-insets: -1;
+}
+.dialog-pane { -fx-background-color: -vr-surface; -fx-border-color: -vr-border; }
+.dialog-pane .header-panel { -fx-background-color: -vr-surface; }
+.workspace-help { -fx-padding: 12 8; }
+.calendar-dense-link { -fx-background-color: -vr-accent-soft; -fx-text-fill: -vr-text; -fx-background-radius: 8; -fx-padding: 12; -fx-cursor: hand; }
+
+/* Search is a native dialog; its list remains virtualized and keyboard navigable. */
+.command-dialog { -fx-padding: 8; -fx-background-radius: 10; -fx-border-radius: 10; }
+.command-content { -fx-padding: 8; }
+.command-search-row { -fx-padding: 4 6 14 6; -fx-border-color: -vr-border; -fx-border-width: 0 0 1 0; }
+.command-search-icon { -fx-icon-color: -vr-muted; -fx-icon-size: 17; }
+.text-field.command-input, .text-field.command-input:focused {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-text-fill: -vr-text;
+    -fx-prompt-text-fill: -vr-muted;
+
+    -fx-padding: 5 0;
+}
+.command-section { -fx-text-fill: -vr-muted; -fx-padding: 5 8; }
+.command-results { -fx-background-color: transparent; -fx-border-color: transparent; -fx-padding: 0; }
+.command-results .list-cell { -fx-background-color: transparent; -fx-padding: 7 10; -fx-background-radius: 7; -fx-cursor: hand; }
+.command-results .list-cell:filled:hover { -fx-background-color: -vr-hover; }
+.command-results .list-cell:filled:selected { -fx-background-color: -vr-accent-soft; }
+.command-icon-wrap { -fx-min-width: 32; -fx-pref-width: 32; -fx-max-width: 32; -fx-min-height: 32; -fx-pref-height: 32; -fx-max-height: 32; -fx-background-color: -vr-raised; -fx-background-radius: 7; }
+.command-result-icon { -fx-icon-color: -vr-accent; -fx-icon-size: 14; }
+.command-result-title { -fx-text-fill: -vr-text; }
+.command-result-detail { -fx-text-fill: -vr-muted; }
+.command-result-kind { -fx-text-fill: -vr-muted; }
+.command-empty { -fx-text-fill: -vr-muted; -fx-padding: 24; }
+.command-keyboard-hint { -fx-text-fill: -vr-muted; -fx-padding: 10 8 0 8; }

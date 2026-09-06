@@ -79,6 +79,7 @@ public final class AccountController {
     public void setCurrentUser(UserAccount user, Runnable logoutAction,
                                BufferedImage preloadedAvatar, int preloadedPixelSize) {
         currentUser = Objects.requireNonNull(user);
+        com.crm.view.BrandMark.select(com.crm.model.AppIcon.from(user.getPreferredIcon()));
         this.logoutAction = logoutAction;
         currentUserLabel.setText(user.getFullName());
         displayedAvatarFileName = null;
@@ -117,9 +118,29 @@ public final class AccountController {
         importData.setOnAction(event -> { if (importDataAction != null) importDataAction.run(); });
         MenuItem logout = new MenuItem("Sign out");
         logout.setOnAction(event -> logout());
-        new ContextMenu(profile, security, avatar, new SeparatorMenuItem(),
+        Menu iconChoice = new Menu("App icon"); iconChoice.setId("appIconMenu");
+        ToggleGroup icons = new ToggleGroup();
+        for (com.crm.model.AppIcon icon : com.crm.model.AppIcon.values()) {
+            RadioMenuItem item = new RadioMenuItem(icon.toString()); item.setId("appIcon" + icon.name());
+            item.setToggleGroup(icons); item.setSelected(icon.name().equals(currentUser.getPreferredIcon()));
+            item.setGraphic(new ImageView(com.crm.view.BrandMark.icon(icon, 24)));
+            item.setOnAction(event -> selectIcon(icon)); iconChoice.getItems().add(item);
+        }
+        new ContextMenu(profile, security, avatar, iconChoice, new SeparatorMenuItem(),
                 exportData, importData, new SeparatorMenuItem(), logout)
                 .show(accountMenuButton, Side.BOTTOM, 0, 6);
+    }
+
+    private void selectIcon(com.crm.model.AppIcon icon) {
+        String previous = currentUser.getPreferredIcon();
+        currentUser.setPreferredIcon(icon.name());
+        try { new LocalUserRepository().save(currentUser); }
+        catch (IllegalStateException failure) {
+            currentUser.setPreferredIcon(previous);
+            dialogService.showError("Icon not saved", "The icon preference could not be saved. Check disk access and try again.");
+            return;
+        }
+        com.crm.view.BrandMark.select(icon);
     }
 
     public void editProfile() {
@@ -381,6 +402,10 @@ public final class AccountController {
         email.setEditable(false);
         grid.addRow(0, new Label("Name:"), name);
         grid.addRow(1, new Label("Email:"), email);
+        Label error = new Label(); error.getStyleClass().add("form-error"); error.setWrapText(true); grid.add(error, 0, 2, 2, 1);
+        dialog.getDialogPane().lookupButton(save).addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
+            if (name.getText().trim().length() < 2) { event.consume(); error.setText("Enter your full name."); }
+        });
         dialog.getDialogPane().setContent(grid);
         if (dialog.showAndWait().filter(result -> result == save).isPresent()) {
             String fullName = name.getText();
@@ -409,6 +434,12 @@ public final class AccountController {
         grid.addRow(0, new Label("Current password:"), current);
         grid.addRow(1, new Label("New password:"), next);
         grid.addRow(2, new Label("Confirm password:"), confirm);
+        Label error = new Label(); error.getStyleClass().add("form-error"); error.setWrapText(true); grid.add(error, 0, 3, 2, 1);
+        dialog.getDialogPane().lookupButton(save).addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
+            if (current.getText().isEmpty() || next.getText().length() < 8 || !next.getText().equals(confirm.getText())) {
+                event.consume(); error.setText("Enter the current password and matching new passwords of at least 8 characters.");
+            }
+        });
         dialog.getDialogPane().setContent(grid);
         if (dialog.showAndWait().filter(result -> result == save).isEmpty()) return;
         if (!next.getText().equals(confirm.getText())) {

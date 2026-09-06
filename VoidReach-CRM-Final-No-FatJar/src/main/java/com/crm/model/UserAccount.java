@@ -4,6 +4,15 @@ import java.time.Instant;
 
 /** Record-shaped domain model: maps directly to a future users SQL table. */
 public class UserAccount {
+    public UserAccount() { }
+    public UserAccount(UserAccount source) {
+        id = source.id; fullName = source.fullName; email = source.email;
+        passwordHash = source.passwordHash; passwordSalt = source.passwordSalt; createdAt = source.createdAt;
+        resetCodeHash = source.resetCodeHash; resetCodeExpiresAt = source.resetCodeExpiresAt;
+        avatarFileName = source.avatarFileName; preferredTheme = source.preferredTheme;
+        preferredIcon = source.preferredIcon;
+        vaultConfig = source.vaultConfig; recoveryVerifier = source.recoveryVerifier; vaultMigrated = source.vaultMigrated;
+    }
     private String id;
     private String fullName;
     private String email;
@@ -14,6 +23,19 @@ public class UserAccount {
     private Instant resetCodeExpiresAt;
     private String avatarFileName;
     private String preferredTheme = "DARK";
+    private String preferredIcon = "V";
+    public String getPreferredIcon() { return preferredIcon; }
+    public void setPreferredIcon(String value) { preferredIcon = AppIcon.from(value).name(); }
+    private String vaultConfig = "";
+    private String recoveryVerifier = "";
+    private boolean vaultMigrated;
+    public String getVaultConfig() { return vaultConfig; }
+    public void setVaultConfig(String value) { vaultConfig = value == null ? "" : value; }
+    public boolean isVaultEnabled() { return !vaultConfig.isBlank(); }
+    public String getRecoveryVerifier() { return recoveryVerifier; }
+    public void setRecoveryVerifier(String value) { recoveryVerifier = value == null ? "" : value; }
+    public boolean isVaultMigrated() { return vaultMigrated; }
+    public void setVaultMigrated(boolean value) { vaultMigrated = value; }
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }

@@ -1,0 +1,108 @@
+/*
+ * VoidReach type system. Loaded last in every scene and dialog.
+ * Inter is bundled, not an OS-dependent fallback. Palette files own colors,
+ * workspace.css owns layout; only this file owns application typography.
+ * Inter Medium/SemiBold have separate legacy family names in JavaFX.
+ * Select their actual family at normal weight; 500/600 on Inter would fall back to Regular.
+ * User-selected editor fonts remain inline; reading CSS lives in markdown-preview.css.
+ */
+.root, .dialog-pane { -fx-font-family: "Inter"; -fx-font-size: 13px; -fx-font-weight: 400; -fx-font-style: normal; }
+.button, .toggle-button, .menu-button, .menu-item, .combo-box, .choice-box,
+.check-box, .radio-button, .text-field, .text-area, .list-cell, .tree-cell { -fx-font-size: 13px; }
+.tooltip { -fx-font-family: "Inter"; -fx-font-size: 12px; -fx-font-weight: 400; }
+.label { -fx-line-spacing: 2; }
+.text { -fx-font-smoothing-type: gray; }
+
+/* Navigation and quiet utility text */
+.brand-title { -fx-font-size: 18px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.brand-caption, .nav-section-label, .account-caption, .page-eyebrow,
+.keyboard-shortcut, .command-section, .command-result-kind, .command-keyboard-hint { -fx-font-size: 11px; }
+.nav-section-label, .page-eyebrow, .command-section { -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.sidebar-button { -fx-font-size: 13px; -fx-font-weight: 400; }
+.sidebar-button.sidebar-button-active { -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.topbar-title, .account-name { -fx-font-size: 13px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.save-status { -fx-font-size: 11px; }
+.workspace-search-prompt, .workspace-history-menu { -fx-font-size: 12px; }
+.reminder-count { -fx-font-size: 10px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+
+/* Page hierarchy and shared controls */
+.section-title { -fx-font-size: 28px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.section-subtitle { -fx-font-size: 13px; }
+.btn-primary, .auth-primary { -fx-font-size: 13px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.btn-secondary, .btn-today, .danger-button { -fx-font-size: 13px; -fx-font-weight: 400; }
+.text-button, .note-reset-typography { -fx-font-size: 12px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.control-label, .field-caption, .form-error, .pagination-info,
+.empty-caption, .overview-empty, .tasks-empty, .notes-empty, .empty-activities { -fx-font-size: 12px; }
+.panel-title, .overview-card-title, .settings-card-title, .settings-account-name,
+.settings-theme-title { -fx-font-size: 15px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.panel-section-title, .settings-section-title { -fx-font-size: 13px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.panel-subtitle, .overview-card-subtitle, .overview-card-kicker { -fx-font-size: 12px; }
+.tag, .overview-tag, .task-status, .settings-local-badge { -fx-font-size: 11px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+
+/* Overview, lists, contacts, charts and settings */
+.metric-label { -fx-font-size: 11px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.metric-value { -fx-font-size: 30px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.metric-caption, .focus-summary-detail, .overview-item-subtitle,
+.task-list-description, .task-list-time, .settings-account-email,
+.settings-caption, .settings-card-copy, .settings-theme-status, .settings-warning { -fx-font-size: 12px; }
+.next-activity-title, .task-list-title { -fx-font-size: 14px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.overview-item-title, .focus-summary-title, .command-result-title { -fx-font-size: 13px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.contact-initial { -fx-font-size: 12px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.table-cell { -fx-font-size: 13px; }
+.table-view .column-header .label, .editable-column-header { -fx-font-size: 12px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.axis { -fx-font-size: 11px; -fx-tick-label-font: 11px "Inter"; }
+.chart-legend-item { -fx-font-size: 12px; }
+.task-date-header-title, .task-date-header-date, .task-date-header-count { -fx-font-size: 11px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.settings-theme-active .settings-theme-status { -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.text-field.command-input { -fx-font-size: 16px; }
+.command-result-detail { -fx-font-size: 12px; }
+
+/* Calendar: readable times, restrained event weights, compact month cells */
+.calendar-period-title { -fx-font-size: 24px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.calendar-day-heading, .week-day-header { -fx-font-size: 12px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.calendar-date-picker > .text-field, .date-picker-popup .month-year-pane .label { -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.date-picker-popup .day-name-cell { -fx-font-size: 12px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.calendar-hint, .calendar-all-day-caption, .calendar-time-label, .hour-label,
+.sub-hour-label, .task-time, .task-desc, .calendar-zoom-value { -fx-font-size: 11px; -fx-font-weight: 400; }
+.calendar-zoom-button { -fx-font-size: 17px; -fx-font-weight: 400; }
+.task-title, .calendar-event-v2 .task-title { -fx-font-size: 12px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.calendar-event-v2 .task-time { -fx-font-size: 11px; }
+.calendar-all-day-event, .calendar-month-event { -fx-font-size: 11px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.calendar-month-date, .calendar-more { -fx-font-size: 12px; }
+.calendar-agenda-event { -fx-font-size: 13px; }
+.mini-month-title { -fx-font-size: 13px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.calendar-day { -fx-font-size: 11px; }
+.calendar-day-header { -fx-font-size: 11px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.calendar-day-selected { -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.activity-title { -fx-font-size: 13px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.activity-time { -fx-font-size: 11px; }
+.calendar-note-link, .activity-note-link, .dialog-note-link, .task-note-link,
+.task-note-caption { -fx-font-size: 11px; -fx-font-weight: 400; }
+
+/* Notes: an editorial title; source and reading are deliberately independent */
+.notes-location-label, .note-breadcrumb-segment { -fx-font-size: 12px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.note-breadcrumb-separator { -fx-font-size: 13px; }
+.note-card-title, .note-folder-title { -fx-font-size: 15px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.note-card-excerpt, .note-folder-count, .note-card-link { -fx-font-size: 12px; }
+.note-folder-file-title, .note-card-format, .note-format-badge { -fx-font-size: 11px; }
+.note-card-format, .note-format-badge { -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.text-field.note-title-field { -fx-font-size: 24px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.note-toolbar-label { -fx-font-size: 12px; -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.note-toolbar-hint, .note-picker-hint { -fx-font-size: 11px; }
+.note-font-control, .markdown-tool, .note-appearance-disclosure, .reading-status { -fx-font-size: 12px; }
+.markdown-tool { -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.markdown-tool-bold { -fx-font-family: "Inter"; -fx-font-weight: 700; }
+.markdown-tool-italic, .note-folder-file-empty, .note-code-area .syntax-comment { -fx-font-style: italic; }
+.note-picker-tree .tree-cell { -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.note-picker-tree .note-picker-file, .note-picker-tree .note-picker-file .check-box { -fx-font-weight: 400; }
+
+/* Dialogs, sign-in, and startup use the same family and weight language */
+.dialog-pane .header-panel .label { -fx-font-size: 18px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.dialog-pane .button { -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }
+.event-editor-title, .dialog-pane .text-field.event-editor-title { -fx-font-size: 20px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.auth-brand, .splash-brand { -fx-font-size: 28px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.auth-title { -fx-font-size: 22px; -fx-font-family: "Inter SemiBold"; -fx-font-weight: 400; }
+.auth-subtitle { -fx-font-size: 13px; }
+.auth-message, .auth-checkbox, .splash-status, .splash-percent { -fx-font-size: 12px; }
+.splash-subtitle, .splash-footer { -fx-font-size: 11px; }
+.splash-percent { -fx-font-family: "Inter Medium"; -fx-font-weight: 400; }

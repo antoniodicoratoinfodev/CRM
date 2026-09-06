@@ -7,6 +7,7 @@ import javafx.scene.paint.Color;
 import javafx.stage.Window;
 
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Objects;
 import java.util.function.Supplier;
 
@@ -105,13 +106,17 @@ public final class ThemeService {
     }
 
     private List<String> stylesheets() {
+        Typography.load();
         String base = activeTheme == Theme.LIGHT ? LIGHT_STYLESHEET : DARK_STYLESHEET;
         String baseUrl = stylesheetUrl(base);
-        return switch (activeTheme) {
+        List<String> stylesheets = new ArrayList<>(switch (activeTheme) {
             case BLUE_GRAY -> List.of(baseUrl, stylesheetUrl(BLUE_GRAY_STYLESHEET));
             case GRAY_BLUE -> List.of(baseUrl, stylesheetUrl(GRAY_BLUE_STYLESHEET));
             default -> List.of(baseUrl);
-        };
+        });
+        stylesheets.add(stylesheetUrl("/css/workspace.css"));
+        stylesheets.add(stylesheetUrl("/css/typography.css"));
+        return List.copyOf(stylesheets);
     }
 
     private String stylesheetUrl(String resource) {

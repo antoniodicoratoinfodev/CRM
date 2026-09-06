@@ -21,6 +21,34 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class CrmWorkspaceServiceTest {
+    @Test void immediateCloseFlushesDebouncedChanges() throws Exception {
+        RecordingRepository repository = new RecordingRepository();
+        CrmWorkspaceService service = new CrmWorkspaceService(repository, new CrmBackupService()); service.open(account());
+        service.requestSave(snapshot("last keystroke"), state -> { });
+        service.closeAsync().get(3, TimeUnit.SECONDS);
+        assertEquals("last keystroke", repository.lastSnapshot.get().contacts().getFirst().nameProperty().get());
+        assertEquals(1, repository.saveCount.get());
+    }
+
+    @Test void failedFinalSaveKeepsDirtyDataAndAllowsCloseRetry() throws Exception {
+        RecordingRepository repository = new RecordingRepository(); repository.fail = true;
+        CrmWorkspaceService service = new CrmWorkspaceService(repository, new CrmBackupService()); service.open(account());
+        service.requestSave(snapshot("unsaved"), state -> { });
+        org.junit.jupiter.api.Assertions.assertThrows(java.util.concurrent.ExecutionException.class,
+                () -> service.closeAsync().get(3, TimeUnit.SECONDS));
+        repository.fail = false;
+        service.closeAsync().get(3, TimeUnit.SECONDS);
+        assertEquals("unsaved", repository.lastSnapshot.get().contacts().getFirst().nameProperty().get());
+    }
+
+    @Test void exportFlushesTheCurrentRevision() throws Exception {
+        RecordingRepository repository = new RecordingRepository();
+        CrmWorkspaceService service = new CrmWorkspaceService(repository, new CrmBackupService()); service.open(account());
+        try {
+            service.requestSave(snapshot("export latest"), state -> { }); service.exportAsync(Path.of("unused.properties")).get(3, TimeUnit.SECONDS);
+            assertEquals("export latest", repository.exported.contacts().getFirst().nameProperty().get());
+        } finally { service.closeAsync().get(3, TimeUnit.SECONDS); }
+    }
     @Test void debouncePersistsOnlyTheNewestDetachedSnapshot() throws Exception {
         RecordingRepository repository = new RecordingRepository();
         CrmWorkspaceService service = new CrmWorkspaceService(repository, new CrmBackupService());
@@ -56,16 +84,19 @@ class CrmWorkspaceServiceTest {
     private static final class RecordingRepository implements CrmDataRepository {
         private final AtomicInteger saveCount = new AtomicInteger();
         private final AtomicReference<CrmDataSnapshot> lastSnapshot = new AtomicReference<>();
+        private volatile boolean fail;
+        private CrmDataSnapshot exported;
 
         @Override public CrmDataSnapshot loadForUser(String userId) { return snapshot("loaded"); }
 
         @Override public void saveForUser(String userId, CrmDataSnapshot data) {
+            if (fail) throw new IllegalStateException("Simulated disk full");
             saveCount.incrementAndGet();
             lastSnapshot.set(data);
         }
 
         @Override public void exportForUser(String userId, Path target, ExportOwner owner) {
-            throw new UnsupportedOperationException("not exercised by this test");
+            exported = lastSnapshot.get();
         }
 
         @Override public ImportedWorkspace readImport(Path source) {

@@ -34,10 +34,13 @@ public final class CrmWorkspaceService implements AutoCloseable {
         return thread;
     });
     private final Object pendingSaveLock = new Object();
-    private UserAccount currentUser;
+    private volatile UserAccount currentUser;
     private CrmDataSnapshot pendingSnapshot;
     private Consumer<SaveState> pendingListener;
     private ScheduledFuture<?> pendingSave;
+    private long revision;
+    private long savedRevision;
+    private CompletableFuture<Void> closing;
 
     public CrmWorkspaceService() {
         this(new LocalCrmDataRepository(), new CrmBackupService());
@@ -51,6 +54,7 @@ public final class CrmWorkspaceService implements AutoCloseable {
     public CrmDataSnapshot open(UserAccount user) {
         close();
         currentUser = Objects.requireNonNull(user);
+        if (user.isVaultEnabled()) WorkspaceVaultService.markEnabled(user.getId());
         try {
             return repository.loadForUser(user.getId());
         } finally {
@@ -85,61 +89,102 @@ public final class CrmWorkspaceService implements AutoCloseable {
         Objects.requireNonNull(snapshot);
         Objects.requireNonNull(listener);
         synchronized (pendingSaveLock) {
+            if (closing != null) throw new IllegalStateException("The workspace is closing.");
             pendingSnapshot = snapshot;
             pendingListener = listener;
+            revision++;
             if (pendingSave != null) pendingSave.cancel(false);
             pendingSave = debounceExecutor.schedule(this::enqueuePendingSave,
                     SAVE_DEBOUNCE_MILLIS, TimeUnit.MILLISECONDS);
         }
+        listener.accept(SaveState.SAVING);
     }
 
     private void enqueuePendingSave() {
+        synchronized (pendingSaveLock) {
+            pendingSave = null;
+            // Submission is inside the same lock as flush: a close/export cannot overtake it.
+            if (pendingSnapshot != null) ioExecutor.execute(() -> {
+                try { persistLatest(); }
+                catch (RuntimeException ignored) { /* Failure was reported; the dirty snapshot is retained. */ }
+            });
+        }
+    }
+
+    private void persistLatest() {
         CrmDataSnapshot snapshot;
         Consumer<SaveState> listener;
+        long writingRevision;
         synchronized (pendingSaveLock) {
+            if (pendingSnapshot == null || savedRevision == revision) return;
             snapshot = pendingSnapshot;
             listener = pendingListener;
-            pendingSnapshot = null;
-            pendingListener = null;
-            pendingSave = null;
+            writingRevision = revision;
         }
-        if (snapshot == null || listener == null) return;
-        ioExecutor.execute(() -> saveSnapshot(snapshot, listener));
-    }
-
-    private void saveSnapshot(CrmDataSnapshot snapshot, Consumer<SaveState> listener) {
-        listener.accept(SaveState.SAVING);
         try {
             save(snapshot);
-            listener.accept(SaveState.SAVED);
+            synchronized (pendingSaveLock) {
+                savedRevision = writingRevision;
+                if (writingRevision == revision) listener.accept(SaveState.SAVED);
+            }
         } catch (RuntimeException exception) {
             listener.accept(new SaveState(exception));
+            throw exception;
         }
     }
 
-    /** Flushes the latest debounced snapshot before closing the active workspace. */
-    public CompletableFuture<Void> closeAsync() {
-        CrmDataSnapshot snapshot;
-        Consumer<SaveState> listener;
+    /** A serial I/O barrier which includes writes still waiting for the debounce timer. */
+    public CompletableFuture<Void> flushAsync() {
         synchronized (pendingSaveLock) {
             if (pendingSave != null) pendingSave.cancel(false);
             pendingSave = null;
-            snapshot = pendingSnapshot;
-            listener = pendingListener;
-            pendingSnapshot = null;
-            pendingListener = null;
+            return CompletableFuture.runAsync(this::persistLatest, ioExecutor);
         }
-        CrmDataSnapshot finalSnapshot = snapshot;
-        Consumer<SaveState> finalListener = listener;
-        return CompletableFuture.runAsync(() -> {
-            try {
-                if (finalSnapshot != null && finalListener != null) saveSnapshot(finalSnapshot, finalListener);
+    }
+
+    public CompletableFuture<Void> exportAsync(Path target) {
+        return flushAsync().thenRunAsync(() -> exportCurrentUser(target), ioExecutor);
+    }
+    public CompletableFuture<java.util.List<Path>> listBackupsAsync() {
+        return CompletableFuture.supplyAsync(() -> backupService.listBackups(currentUser.getId()), ioExecutor);
+    }
+    public CompletableFuture<Path> checkpointAsync() {
+        return flushAsync().thenApplyAsync(ignored -> backupService.checkpoint(currentUser.getId()), ioExecutor);
+    }
+    public CompletableFuture<CrmDataSnapshot> readBackupAsync(Path path) {
+        return CompletableFuture.supplyAsync(() -> backupService.readBackup(currentUser.getId(), path), ioExecutor);
+    }
+    public String backupFailure() { return backupService.lastFailure(); }
+
+    /** Serializes account protection with saves and waits for a running backup before migration. */
+    public CompletableFuture<Void> maintenanceAsync(Runnable operation) {
+        return flushAsync().thenRunAsync(() -> {
+            backupService.close();
+            try { operation.run(); }
+            finally { if (currentUser != null) backupService.start(currentUser.getId()); }
+        }, ioExecutor);
+    }
+
+    /** Failed final saves leave the workspace, its retry path, and backups alive. */
+    public CompletableFuture<Void> closeAsync() {
+        synchronized (pendingSaveLock) {
+            if (closing != null) return closing;
+            CompletableFuture<Void> result = new CompletableFuture<>();
+            closing = result;
+            flushAsync().thenRunAsync(() -> {
+                String userId = currentUser == null ? null : currentUser.getId();
                 close();
-            } finally {
+                if (userId != null) WorkspaceVaultService.lock(userId);
                 debounceExecutor.shutdownNow();
                 ioExecutor.shutdown();
-            }
-        }, ioExecutor);
+            }, ioExecutor).whenComplete((ignored, failure) -> {
+                if (failure != null) {
+                    synchronized (pendingSaveLock) { closing = null; }
+                    result.completeExceptionally(failure);
+                } else result.complete(null);
+            });
+            return result;
+        }
     }
 
     @Override

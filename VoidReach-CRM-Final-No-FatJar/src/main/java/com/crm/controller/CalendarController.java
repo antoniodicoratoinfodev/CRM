@@ -3,37 +3,32 @@ package com.crm.controller;
 import com.crm.model.Note;
 import com.crm.model.NoteFolder;
 import com.crm.model.Task;
+import com.crm.model.Contact;
+import com.crm.model.CalendarPreferences;
+import com.crm.service.CalendarOccurrenceService;
+import com.crm.service.CalendarOccurrenceService.Occurrence;
+import com.crm.service.ICalendarService;
 import com.crm.service.DialogService;
 import com.crm.service.ThemeService;
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
-import javafx.beans.property.BooleanProperty;
-import javafx.beans.property.SimpleBooleanProperty;
 import javafx.collections.FXCollections;
-import javafx.geometry.Bounds;
 import javafx.geometry.HPos;
 import javafx.geometry.Point2D;
 import javafx.scene.Scene;
-import javafx.scene.canvas.Canvas;
-import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.*;
-import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
-import javafx.scene.input.MouseEvent;
 import javafx.scene.input.ScrollEvent;
 import javafx.scene.input.ZoomEvent;
 import javafx.scene.layout.*;
-import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
-import javafx.stage.Popup;
 import javafx.util.Duration;
 
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -47,21 +42,11 @@ import java.util.Set;
 public final class CalendarController {
     private static final int MINI_CALENDAR_COLUMNS = 7;
     private static final double MINI_CALENDAR_MAX_CELL_SIZE = 40;
-    private static final double MINUTE_HEIGHT = 1.0;
-    private static final double HOUR_HEIGHT = 60.0;
     private static final double ZOOM_STEP = 0.1;
     private static final double MIN_ZOOM = 0.75;
     private static final double MAX_ZOOM = 3.0;
     private static final double DEFAULT_ZOOM = 1.0;
-    private static final double DEFAULT_TIME_COLUMN_WIDTH = 72.0;
     private static final double MIN_TIMELINE_WIDTH = 320.0;
-    private static final double TIMELINE_TOP_SPACER_HEIGHT = 12.0;
-    private static final double WEEK_HEADER_HEIGHT = 36.0;
-    private static final double TASK_RESIZE_HIT_HEIGHT = 10.0;
-    private static final double TASK_RESIZE_OVERLAP = 3.0;
-    private static final double TASK_TITLE_MAX_FONT_SIZE = 12.0;
-    private static final double TASK_TITLE_MIN_FONT_SIZE = 4.0;
-    private static final double TASK_TITLE_FULL_SIZE_HEIGHT = 24.0;
 
     private final VBox calendarView;
     private final AnchorPane timeLabelsContainer;
@@ -81,18 +66,13 @@ public final class CalendarController {
     private final Runnable dataChanged;
     private final Runnable showCalendar;
     private final Map<LocalDate, List<Task>> tasksByDate = new HashMap<>();
-    private final List<TaskResizeTarget> taskResizeTargets = new ArrayList<>();
     private NoteIntegration noteIntegration = NoteIntegration.EMPTY;
+    private CalendarBoard board;
+    private CalendarPreferences preferences = CalendarPreferences.DEFAULT;
+    private java.util.function.Supplier<List<Contact>> contactSupplier = List::of;
+    private java.util.function.BiConsumer<LocalDate, Task> archiveDeleted = (date, task) -> { };
+    public void setArchiveDeleted(java.util.function.BiConsumer<LocalDate, Task> action) { archiveDeleted = action; }
 
-    private double dragAnchorY;
-    private double dragAnchorX;
-    private double dragInitialTop;
-    private int dragTargetDayOffset;
-    private boolean draggingTask;
-    private TaskResizeTarget activeResizeTarget;
-    private double resizeStartScreenY;
-    private int resizeStartDuration;
-    private boolean suppressClickAfterResize;
     private double zoom = DEFAULT_ZOOM;
     private PauseTransition resizeDebounce;
     private boolean calendarOpening;
@@ -143,7 +123,8 @@ public final class CalendarController {
                 resizeMiniCalendarCells());
         setupViewModeCombo();
         setupZoomControls();
-        setupTaskResizeGestures();
+        board = new CalendarBoard(this, calendarView, timelineArea, timeLabelsContainer, calendarContentRow,
+                scrollPane, datePicker, viewModeCombo, selectedPeriodLabel, zoomLabel);
         updateZoomLabel();
         render();
         updateSidebar();
@@ -174,7 +155,7 @@ public final class CalendarController {
             if (source != null) source.forEach((date, tasks) -> tasksByDate.put(date, new ArrayList<>(tasks)));
             zoom = clamp(selectedZoom, MIN_ZOOM, MAX_ZOOM);
             updateZoomLabel();
-            viewMode = "Week".equals(selectedViewMode) ? "Week" : "Day";
+            viewMode = List.of("Day", "Week", "Month", "Agenda").contains(selectedViewMode) ? selectedViewMode : "Day";
             LocalDate date = selectedDate == null ? LocalDate.now() : selectedDate;
             viewModeCombo.setValue(viewMode);
             datePicker.setValue(date);
@@ -196,15 +177,199 @@ public final class CalendarController {
     public LocalDate selectedDate() { return datePicker.getValue(); }
     public String viewMode() { return viewMode; }
     public double zoom() { return zoom; }
+    CalendarPreferences preferences() { return preferences; }
+    void setSnap(CalendarPreferences.Snap snap) {
+        preferences = preferences.withSnap(snap); render(); notifyDataChanged();
+    }
+    public void applyPreferences(Map<String, String> values) { preferences = CalendarPreferences.from(values); }
+    public Map<String, String> preferencesSnapshot() { return preferences.values(); }
+    public void setContacts(java.util.function.Supplier<List<Contact>> contacts) { contactSupplier = contacts; }
+    void selectDay(LocalDate date) { viewModeCombo.setValue("Day"); selectDate(date); showCalendar.run(); }
+    void showAgenda(LocalDate date) { viewModeCombo.setValue("Agenda"); selectDate(date); showCalendar.run(); }
+    void createEvent(LocalDate date, int start, int duration) { editItem(date, null, start, duration, "", false); }
+    public void createFollowUp(Contact contact, LocalDate due) {
+        Task draft = Task.scheduled(java.util.UUID.randomUUID().toString(), "Follow up with " + contact.nameProperty().get(), "", 0, 60, "Blue", false);
+        draft.setScheduled(false); draft.setDueDate(due); draft.setContactId(contact.getId());
+        new CalendarTaskEditor(themeService, noteIntegration, contactSupplier.get()).show(draft, due, 0, 60, "", true)
+                .filter(result -> !result.delete()).ifPresent(result -> commitEdit(due, null, result, null));
+    }
+
+    private void editItem(LocalDate date, Task original, int start, int duration, String description, boolean todo) {
+        new CalendarTaskEditor(themeService, noteIntegration, contactSupplier.get()).show(original, date, start, duration, description, todo)
+                .ifPresent(result -> commitEdit(date, original, result, null));
+    }
+
+    private LocalDate sourceDate(Task task) {
+        return tasksByDate.entrySet().stream().filter(entry -> entry.getValue().stream().anyMatch(item -> item.getId().equals(task.getId())))
+                .map(Map.Entry::getKey).findFirst().orElse(null);
+    }
+
+    private void commitEdit(LocalDate occurrence, Task original, CalendarTaskEditor.Result result, String forcedScope) {
+        LocalDate source = original == null ? null : sourceDate(original);
+        String scope = "Entire series";
+        if (original != null && original.getFrequency() != Task.Frequency.NONE) {
+            if (forcedScope != null) scope = forcedScope;
+            else {
+                ChoiceDialog<String> choice = new ChoiceDialog<>("This occurrence", "This occurrence", "This and following", "Entire series");
+                choice.setTitle(result.delete() ? "Delete recurring event" : "Update recurring event");
+                choice.setHeaderText("Which events should change?");
+                choice.setContentText("This occurrence becomes independent; the other events stay unchanged.");
+                themeService.applyTo(choice);
+                Optional<String> selected = choice.showAndWait();
+                if (selected.isEmpty()) { render(); return; }
+                scope = selected.get();
+            }
+        }
+        Task replacement = result.task(); LocalDate target = result.date();
+        boolean detached = original != null && original.getFrequency() != Task.Frequency.NONE && !scope.equals("Entire series");
+        if (source != null && detached) {
+            if (scope.equals("This occurrence")) {
+                if (result.delete()) {
+                    Task archived = com.crm.service.WorkspaceHistoryService.archiveTask(original, noteIntegration.notes()).copyWithId(java.util.UUID.randomUUID().toString());
+                    archived.setFrequency(Task.Frequency.NONE); archived.setRepeatCount(0); archived.setRepeatUntil(null); archived.clearExclusions();
+                    archiveDeleted.accept(occurrence, archived);
+                }
+                original.exclude(occurrence);
+                if (!result.delete()) {
+                    replacement = replacement.copyWithId(java.util.UUID.randomUUID().toString());
+                    replacement.setFrequency(Task.Frequency.NONE); replacement.clearExclusions(); replacement.setRepeatCount(0); replacement.setRepeatUntil(null);
+                }
+            } else if (occurrence.equals(source)) {
+                removeTask(source, original); detached = false;
+            } else {
+                LocalDate previousUntil = original.getRepeatUntil(); int previousCount = original.getRepeatCount();
+                int used = CalendarOccurrenceService.countBefore(original, source, occurrence);
+                if (result.delete()) {
+                    Task archived = com.crm.service.WorkspaceHistoryService.archiveTask(original, noteIntegration.notes()).copyWithId(java.util.UUID.randomUUID().toString());
+                    if (previousCount > 0) archived.setRepeatCount(Math.max(1, previousCount - used));
+                    archiveDeleted.accept(occurrence, archived);
+                }
+                original.setRepeatCount(0); original.setRepeatUntil(occurrence.minusDays(1));
+                if (!result.delete()) {
+                    replacement = replacement.copyWithId(java.util.UUID.randomUUID().toString());
+                    // Preserve explicit edits to the recurrence end; otherwise retain remaining COUNT.
+                    if (previousCount > 0 && replacement.getRepeatCount() == previousCount)
+                        replacement.setRepeatCount(Math.max(1, previousCount - used));
+                    long shift = java.time.temporal.ChronoUnit.DAYS.between(occurrence, target);
+                    replacement.clearExclusions();
+                    for (LocalDate excluded : original.getExcludedDates())
+                        if (!excluded.isBefore(occurrence)) replacement.exclude(excluded.plusDays(shift));
+                }
+            }
+        } else if (source != null) {
+            removeTask(source, original);
+            if (original.getFrequency() != Task.Frequency.NONE && !result.delete()) {
+                long shift = java.time.temporal.ChronoUnit.DAYS.between(occurrence, target);
+                target = source.plusDays(shift);
+                if (shift != 0) {
+                    replacement.clearExclusions();
+                    for (LocalDate excluded : original.getExcludedDates()) replacement.exclude(excluded.plusDays(shift));
+                }
+            }
+        }
+        if (original != null && !detached) unlinkNotes(original.getId());
+        if (!result.delete()) {
+            addTask(target, replacement);
+            for (Note note : noteIntegration.notes()) if (result.notes().contains(note.getId())) note.linkTask(replacement.getId());
+        }
+        render(); updateSidebar(); notifyDataChanged();
+    }
+
+    void moveOccurrence(Occurrence occurrence, LocalDate date, int start, int duration) {
+        Task original = occurrence.task();
+        Task replacement = Task.scheduled(original.getId(), original.getTitle(), original.getDescription(), start, duration, original.getColor(), original.isCompleted());
+        replacement.applyMetadata(original.metadata());
+        Set<String> links = new HashSet<>(); noteIntegration.notesForTask(original.getId()).forEach(note -> links.add(note.getId()));
+        commitEdit(occurrence.date(), original, new CalendarTaskEditor.Result(date, replacement, links, false), null);
+    }
+
+    void showDetails(Occurrence entry) {
+        Task task = entry.task(); Dialog<ButtonType> dialog = new Dialog<>(); dialog.setTitle("Event details"); themeService.applyTo(dialog);
+        Label title = new Label(task.getTitle()); title.getStyleClass().add("section-title"); title.setWrapText(true);
+        Label schedule = new Label(task.isAllDay() ? "All day · " + entry.date() : entry.start() + " → " + entry.end()); schedule.setWrapText(true);
+        Label description = new Label(task.getDescription()); description.setWrapText(true);
+        VBox content = new VBox(12, title, schedule, new Label(task.getPriority() + " priority · " + task.getStatus()), description);
+        contactSupplier.get().stream().filter(c -> c.getId().equals(task.getContactId())).findFirst()
+                .ifPresent(contact -> content.getChildren().add(new Label("Contact: " + contact.nameProperty().get())));
+        for (Note note : noteIntegration.notesForTask(task.getId())) {
+            Button link = new Button(note.getTitle()); link.getStyleClass().add("text-button");
+            link.setOnAction(e -> { dialog.close(); noteIntegration.openNote(note.getId()); }); content.getChildren().add(link);
+        }
+        content.getStyleClass().add("event-editor"); content.setPrefWidth(420); dialog.getDialogPane().setContent(content);
+        ButtonType edit = new ButtonType("Edit", ButtonBar.ButtonData.OK_DONE), duplicate = new ButtonType("Duplicate", ButtonBar.ButtonData.OTHER),
+                delete = new ButtonType("Delete", ButtonBar.ButtonData.OTHER);
+        dialog.getDialogPane().getButtonTypes().setAll(edit, duplicate, delete, ButtonType.CLOSE);
+        dialog.showAndWait().ifPresent(result -> {
+            if (result == edit) editTask(entry.date(), task);
+            else if (result == delete) deleteTask(entry.date(), task);
+            else if (result == duplicate) {
+                Task copy = task.copyWithId(java.util.UUID.randomUUID().toString()); copy.setFrequency(Task.Frequency.NONE); copy.clearExclusions();
+                new CalendarTaskEditor(themeService, noteIntegration, contactSupplier.get()).show(copy, entry.date(), copy.getStartMin(), copy.getDuration(), copy.getDescription(), false)
+                        .filter(value -> !value.delete()).ifPresent(value -> commitEdit(entry.date(), null, value, null));
+            }
+        });
+    }
+
+    void showPreferences() {
+        Dialog<CalendarPreferences> dialog = new Dialog<>(); dialog.setTitle("Calendar preferences"); themeService.applyTo(dialog);
+        ComboBox<java.time.DayOfWeek> first = new ComboBox<>(FXCollections.observableArrayList(java.time.DayOfWeek.values())); first.setValue(preferences.firstDay());
+        TextField start = new TextField(CalendarBoard.time(preferences.workStart())), end = new TextField(CalendarBoard.time(preferences.workEnd()));
+        ComboBox<CalendarPreferences.Snap> snap = new ComboBox<>(FXCollections.observableArrayList(CalendarPreferences.Snap.values()));
+        snap.setId("calendarSnapPreference"); snap.setValue(preferences.snapMode());
+        Label error = new Label(); error.getStyleClass().add("form-error"); error.setWrapText(true);
+        VBox content = new VBox(10, new Label("First day of the week"), first, new Label("Working hours (HH:mm)"), new HBox(8, start, end),
+                new Label("Drag and resize snap (hold Alt for 1 minute)"), snap, error); content.getStyleClass().add("event-editor");
+        dialog.getDialogPane().setContent(content); dialog.getDialogPane().getButtonTypes().setAll(ButtonType.OK, ButtonType.CANCEL);
+        CalendarPreferences[] accepted = new CalendarPreferences[1];
+        dialog.getDialogPane().lookupButton(ButtonType.OK).addEventFilter(javafx.event.ActionEvent.ACTION, e -> {
+            try { accepted[0] = new CalendarPreferences(first.getValue(), CalendarTaskEditor.parseTime(start.getText(), false), CalendarTaskEditor.parseTime(end.getText(), true), snap.getValue().minutes()); }
+            catch (RuntimeException invalid) { error.setText(invalid.getMessage()); e.consume(); }
+        });
+        dialog.setResultConverter(button -> button == ButtonType.OK ? accepted[0] : null);
+        dialog.showAndWait().ifPresent(value -> { preferences = value; weekStartDate = weekStart(selectedDate()); render(); updateSidebar(); notifyDataChanged(); });
+    }
+
+    void importCalendar() {
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser(); chooser.setTitle("Import calendar");
+        chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter("iCalendar", "*.ics"));
+        java.io.File file = chooser.showOpenDialog(calendarView.getScene().getWindow()); if (file == null) return;
+        java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            try {
+                if (java.nio.file.Files.size(file.toPath()) > 20_000_000) throw new IllegalArgumentException("Calendar files must be under 20 MB.");
+                return ICalendarService.read(java.nio.file.Files.readString(file.toPath()), java.time.ZoneId.systemDefault());
+            } catch (java.io.IOException failure) { throw new IllegalStateException("The calendar file could not be read.", failure); }
+        }).whenComplete((imported, failure) -> Platform.runLater(() -> {
+            if (failure != null) { dialogService.showError("Import failed", failure.getCause() == null ? failure.getMessage() : failure.getCause().getMessage()); return; }
+            String warnings = imported.warnings().isEmpty() ? "" : "\n\nSkipped events:\n" + String.join("\n", imported.warnings().stream().limit(12).toList());
+            if (imported.count() == 0) { dialogService.showInfo("Nothing to import", "No supported events were found." + warnings); return; }
+            if (!dialogService.confirmWarning("Import calendar", "Add " + imported.count() + " events? Existing matching IDs are kept unchanged." + warnings, "Import")) return;
+            Set<String> ids = new HashSet<>(); tasksByDate.values().forEach(items -> items.forEach(item -> ids.add(item.getId())));
+            imported.tasks().forEach((date, items) -> items.forEach(item -> { if (ids.add(item.getId())) addTask(date, item); }));
+            render(); updateSidebar(); notifyDataChanged();
+        }));
+    }
+
+    void exportCalendar() {
+        if (!dialogService.confirmWarning("Export calendar", "ICS files are not encrypted. Appointments use local wall-clock time; tasks without a schedule are not included.", "Continue")) return;
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser(); chooser.setTitle("Export calendar"); chooser.setInitialFileName("VoidReach-calendar.ics");
+        chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter("iCalendar", "*.ics"));
+        java.io.File file = chooser.showSaveDialog(calendarView.getScene().getWindow()); if (file == null) return;
+        Map<LocalDate, List<Task>> copy = new HashMap<>(); tasksByDate.forEach((date, items) -> copy.put(date, items.stream().map(Task::copy).toList()));
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try { ICalendarService.writeFile(file.toPath(), copy, java.time.ZoneId.systemDefault()); }
+            catch (java.io.IOException failure) { throw new IllegalStateException("The calendar file could not be written.", failure); }
+        }).whenComplete((ignored, failure) -> Platform.runLater(() -> {
+            if (failure != null) dialogService.showError("Export failed", "The calendar could not be exported. Your workspace is unchanged.");
+            else dialogService.showInfo("Calendar exported", "Appointments were exported in local time. Tasks without a schedule stay in the workspace.");
+        }));
+    }
 
     public void zoomIn() { handleZoom(true, viewportCenterContentY()); }
     public void zoomOut() { handleZoom(false, viewportCenterContentY()); }
     public void resetZoom() { applyZoom(DEFAULT_ZOOM, viewportCenterContentY()); }
 
     public void createTask(LocalDate date) {
-        selectDate(date == null ? LocalDate.now() : date);
-        int start = Math.min(23 * 60, Math.max(0, (java.time.LocalTime.now().getHour() + 1) * 60));
-        showTaskDialog(null, start, Math.min(60, Task.MINUTES_PER_DAY - start), "");
+        editItem(date == null ? LocalDate.now() : date, null, 9 * 60, 60, "", true);
     }
 
     public void editTask(LocalDate date, Task task) {
@@ -215,19 +380,14 @@ public final class CalendarController {
 
     public void deleteTask(LocalDate date, Task task) {
         if (date == null || task == null) return;
-        unlinkNotes(task.getId());
-        removeTask(date, task);
-        render();
-        updateSidebar();
-        notifyDataChanged();
+        commitEdit(date, task, new CalendarTaskEditor.Result(date, task, Set.of(), true), null);
     }
 
     public void setTaskCompleted(LocalDate date, Task task, boolean completed) {
         if (date == null || task == null || task.isCompleted() == completed) return;
-        task.setCompleted(completed);
-        render();
-        updateSidebar();
-        notifyDataChanged();
+        Task replacement = task.copy(); replacement.setCompleted(completed);
+        Set<String> links = new HashSet<>(); noteIntegration.notesForTask(task.getId()).forEach(note -> links.add(note.getId()));
+        commitEdit(date, task, new CalendarTaskEditor.Result(date, replacement, links, false), "This occurrence");
     }
 
     public void showTaskInCalendar(LocalDate date) {
@@ -275,12 +435,16 @@ public final class CalendarController {
     public void today() { selectDate(LocalDate.now()); }
 
     public void previousPeriod() {
+        if (viewMode.equals("Month")) { selectDate(datePicker.getValue().minusMonths(1)); return; }
+        if (viewMode.equals("Agenda")) { selectDate(datePicker.getValue().minusDays(30)); return; }
         LocalDate target = viewMode.equals("Day")
                 ? datePicker.getValue().minusDays(1) : weekStartDate.minusWeeks(1);
         selectDate(target);
     }
 
     public void nextPeriod() {
+        if (viewMode.equals("Month")) { selectDate(datePicker.getValue().plusMonths(1)); return; }
+        if (viewMode.equals("Agenda")) { selectDate(datePicker.getValue().plusDays(30)); return; }
         LocalDate target = viewMode.equals("Day")
                 ? datePicker.getValue().plusDays(1) : weekStartDate.plusWeeks(1);
         selectDate(target);
@@ -347,7 +511,8 @@ public final class CalendarController {
     }
 
     private void handleCalendarShortcut(KeyEvent event) {
-        if (!calendarView.isVisible() || !calendarView.isHover()) return;
+        if (!calendarView.isVisible()) return;
+        if (calendarView.getScene() != null && calendarView.getScene().getFocusOwner() instanceof TextInputControl) return;
         if (!event.isControlDown() && !event.isMetaDown()) return;
         switch (event.getCode()) {
             case DIGIT0, NUMPAD0 -> {
@@ -419,22 +584,12 @@ public final class CalendarController {
         return Math.max(timelineArea.getHeight(), timelineArea.getPrefHeight());
     }
 
-    private double timelineWidth() {
-        double viewportWidth = scrollPane.getViewportBounds().getWidth();
-        if (viewportWidth <= 0) viewportWidth = scrollPane.getWidth();
-        if (viewportWidth <= 0) return 1000;
-        double timeColumnWidth = timeLabelsContainer.getWidth();
-        if (timeColumnWidth <= 0) timeColumnWidth = timeLabelsContainer.getPrefWidth();
-        if (timeColumnWidth <= 0) timeColumnWidth = DEFAULT_TIME_COLUMN_WIDTH;
-        return timelineWidthFor(viewportWidth, timeColumnWidth);
-    }
-
     static double timelineWidthFor(double viewportWidth, double timeColumnWidth) {
         return Math.max(MIN_TIMELINE_WIDTH, viewportWidth - timeColumnWidth);
     }
 
     private double timelineTopInset() {
-        return TIMELINE_TOP_SPACER_HEIGHT + (viewMode.equals("Week") ? WEEK_HEADER_HEIGHT : 0);
+        return 0;
     }
 
     private static double clamp(double value, double min, double max) {
@@ -442,7 +597,7 @@ public final class CalendarController {
     }
 
     private void setupViewModeCombo() {
-        viewModeCombo.setItems(FXCollections.observableArrayList("Day", "Week"));
+        viewModeCombo.setItems(FXCollections.observableArrayList("Day", "Week", "Month", "Agenda"));
         viewModeCombo.setValue("Day");
         viewModeCombo.valueProperty().addListener((observable, oldValue, newValue) -> {
             if (newValue == null) return;
@@ -454,8 +609,8 @@ public final class CalendarController {
         });
     }
 
-    private LocalDate weekStart(LocalDate date) {
-        return date.minusDays(date.getDayOfWeek().getValue() % 7);
+    LocalDate weekStart(LocalDate date) {
+        return date.minusDays(Math.floorMod(date.getDayOfWeek().getValue() - preferences.firstDay().getValue(), 7));
     }
 
     private void addTask(LocalDate date, Task task) {
@@ -469,447 +624,32 @@ public final class CalendarController {
         if (tasks.isEmpty()) tasksByDate.remove(date);
     }
 
-    private void render() {
-        taskResizeTargets.clear();
-        activeResizeTarget = null;
-        timelineArea.getChildren().clear();
-        timeLabelsContainer.getChildren().clear();
-        double zoomedHourHeight = HOUR_HEIGHT * zoom;
-        double zoomedMinuteHeight = MINUTE_HEIGHT * zoom;
-        double width = timelineWidth();
-        double topInset = timelineTopInset();
-        double height = topInset + 24 * zoomedHourHeight + 12;
-        setFixedHeight(timeLabelsContainer, height);
-        setFixedHeight(timelineArea, height);
-        setFixedHeight(calendarContentRow, height);
-        timelineArea.setMinWidth(width);
-        timelineArea.setPrefWidth(width);
-        timelineArea.setMaxWidth(width);
-        Canvas grid = new Canvas(width, height);
-        grid.setMouseTransparent(true);
-        drawTimelineGrid(grid, width, zoomedHourHeight, zoomedMinuteHeight, topInset);
-        timelineArea.getChildren().add(grid);
-        if (viewMode.equals("Week")) {
-            Region cornerHeader = new Region();
-            cornerHeader.getStyleClass().add("week-time-header");
-            cornerHeader.setPrefHeight(WEEK_HEADER_HEIGHT);
-            AnchorPane.setTopAnchor(cornerHeader, 0.0);
-            AnchorPane.setLeftAnchor(cornerHeader, 0.0);
-            AnchorPane.setRightAnchor(cornerHeader, 0.0);
-            timeLabelsContainer.getChildren().add(cornerHeader);
-        }
-        for (int hour = 0; hour <= 24; hour++) {
-            double hourY = hour * zoomedHourHeight;
-            Label hourLabel = new Label(String.format("%02d:00", hour));
-            hourLabel.getStyleClass().add("hour-label");
-            AnchorPane.setRightAnchor(hourLabel, 10.0);
-            AnchorPane.setTopAnchor(hourLabel, topInset + hourY - 7);
-            timeLabelsContainer.getChildren().add(hourLabel);
-            if (hour < 24) addSubHourLabels(hour, topInset + hourY, zoomedMinuteHeight);
-        }
-        if (viewMode.equals("Day")) renderDayView(zoomedMinuteHeight, topInset);
-        else renderWeekView(width, zoomedMinuteHeight, topInset);
-        calendarContentRow.requestLayout();
-        scrollPane.requestLayout();
-    }
+    private void render() { if (board != null) board.render(); }
 
-    private void setFixedHeight(Region region, double height) {
-        region.setMinHeight(height);
-        region.setPrefHeight(height);
-        region.setMaxHeight(height);
+    static double taskEntryWidth(double dayWidth, double margin) { return Math.max(0, dayWidth - margin * 2); }
+    static double taskEntryHeight(int durationMinutes, double minuteHeight) { return Math.max(0, durationMinutes * minuteHeight); }
+    static double taskTitleFontSize(double height) { return clamp(12 * Math.max(0, height) / 24, 4, 12); }
+    static int taskDurationAfterResize(int duration, double pixels, double minuteHeight, int maximum) {
+        return Math.max(1, Math.min(maximum, duration + (minuteHeight <= 0 ? 0 : (int)Math.round(pixels / minuteHeight))));
     }
-
-    private void addSubHourLabels(int hour, double hourY, double zoomedMinuteHeight) {
-        int subdivisions = zoom > 1.5 ? 60 : 4;
-        int interval = 60 / subdivisions;
-        for (int subdivision = 1; subdivision < subdivisions; subdivision++) {
-            double y = hourY + subdivision * interval * zoomedMinuteHeight;
-            if (subdivision * interval % 15 == 0 || zoom > 1.5 && subdivision % 5 == 0) {
-                Label label = new Label(String.format("%02d:%02d", hour, subdivision * interval));
-                label.getStyleClass().add("sub-hour-label");
-                AnchorPane.setRightAnchor(label, 10.0);
-                AnchorPane.setTopAnchor(label, y - 7);
-                timeLabelsContainer.getChildren().add(label);
-            }
-        }
-    }
-
-    private void drawTimelineGrid(Canvas canvas, double width, double hourHeight, double minuteHeight,
-                                  double topInset) {
-        GraphicsContext graphics = canvas.getGraphicsContext2D();
-        Color hourColor = Color.web(themeService.isBlueGrayTheme() ? "#43516a"
-                : themeService.isGrayBlueTheme() ? "#56616d"
-                : themeService.isDarkMode() ? "#2a3a52" : "#68727d");
-        Color intervalColor = Color.web(themeService.isBlueGrayTheme() ? "#2e3b52"
-                : themeService.isGrayBlueTheme() ? "#3d454e"
-                : themeService.isDarkMode() ? "#18243a" : "#87919b");
-        Color weekDivider = Color.web(themeService.isBlueGrayTheme() ? "#3a4961"
-                : themeService.isGrayBlueTheme() ? "#4d5864"
-                : themeService.isDarkMode() ? "#263449" : "#68727d");
-        graphics.setLineWidth(1);
-        for (int hour = 0; hour <= 24; hour++) {
-            double hourY = topInset + hour * hourHeight;
-            graphics.setGlobalAlpha(1);
-            graphics.setStroke(hourColor);
-            graphics.strokeLine(0, hourY, width, hourY);
-            if (hour >= 24) continue;
-            int subdivisions = zoom > 1.5 ? 60 : 4;
-            int interval = 60 / subdivisions;
-            graphics.setStroke(intervalColor);
-            for (int subdivision = 1; subdivision < subdivisions; subdivision++) {
-                double y = hourY + subdivision * interval * minuteHeight;
-                boolean minorZoomLine = zoom > 1.5 && subdivision % 5 != 0;
-                double alpha = themeService.isDarkMode() ? (minorZoomLine ? 0.3 : 1)
-                        : (minorZoomLine ? 0.2 : 0.55);
-                graphics.setGlobalAlpha(alpha);
-                graphics.strokeLine(0, y, width, y);
-            }
-        }
-        if (viewMode.equals("Week")) {
-            double dayWidth = width / 7.0;
-            graphics.setGlobalAlpha(1);
-            graphics.setStroke(weekDivider);
-            for (int day = 1; day < 7; day++) {
-                graphics.strokeLine(day * dayWidth, topInset, day * dayWidth, topInset + 24 * hourHeight);
-            }
-        }
-        graphics.setGlobalAlpha(1);
-    }
-
-    private void renderDayView(double minuteHeight, double topInset) {
-        timelineArea.setOnMouseClicked(event -> {
-            if (event.getClickCount() == 1 && event.getTarget() == timelineArea
-                    && event.getButton() == MouseButton.PRIMARY && event.getY() >= topInset) {
-                showNewTaskDialogAt((int) ((event.getY() - topInset) / minuteHeight));
-            }
-        });
-        for (Task task : tasksByDate.getOrDefault(datePicker.getValue(), List.of())) {
-            renderTask(task, minuteHeight, 1.0, 0, 10.0, topInset);
-        }
-    }
-
-    private void renderWeekView(double width, double minuteHeight, double topInset) {
-        double dayWidth = width / 7.0;
-        for (int day = 0; day < 7; day++) {
-            LocalDate date = weekStartDate.plusDays(day);
-            Label header = new Label(date.format(DateTimeFormatter.ofPattern("EEE dd/MM")));
-            header.getStyleClass().add("week-day-header");
-            header.setPrefWidth(dayWidth);
-            header.setPrefHeight(WEEK_HEADER_HEIGHT);
-            header.setLayoutX(day * dayWidth);
-            header.setLayoutY(0);
-            timelineArea.getChildren().add(header);
-            for (Task task : tasksByDate.getOrDefault(date, List.of())) {
-                renderTask(task, minuteHeight, 1.0 / 7.0, day, 5.0, topInset);
-            }
-        }
-        timelineArea.setOnMouseClicked(event -> {
-            if (event.getClickCount() != 1 || event.getTarget() != timelineArea
-                    || event.getButton() != MouseButton.PRIMARY) return;
-            if (event.getY() < topInset) return;
-            int dayOffset = (int) (event.getX() / dayWidth);
-            if (dayOffset >= 0 && dayOffset < 7) {
-                datePicker.setValue(weekStartDate.plusDays(dayOffset));
-                showNewTaskDialogAt((int) ((event.getY() - topInset) / minuteHeight));
-            }
-        });
-    }
-
-    private void showNewTaskDialogAt(int requestedStartMinute) {
-        int start = Math.max(0, Math.min(Task.MINUTES_PER_DAY - Task.MIN_DURATION_MINUTES, requestedStartMinute));
-        showTaskDialog(null, start, Math.min(60, Task.MINUTES_PER_DAY - start), "");
-    }
-
-    private void renderTask(Task task, double minuteHeight, double widthPercent, int dayOffset, double margin,
-                            double topInset) {
-        VBox box = new VBox();
-        box.getStyleClass().addAll("task-entry", "task-" + task.getColor().toLowerCase());
-        if (task.isCompleted()) box.getStyleClass().add("task-entry-completed");
-        double width = timelineWidth();
-        double dayWidth = width * widthPercent;
-        AnchorPane.setLeftAnchor(box, dayOffset * dayWidth + margin);
-        AnchorPane.setTopAnchor(box, topInset + task.getStartMin() * minuteHeight);
-        setTaskWidth(box, taskEntryWidth(dayWidth, margin));
-        Rectangle taskClip = new Rectangle();
-        taskClip.widthProperty().bind(box.widthProperty());
-        taskClip.heightProperty().bind(box.heightProperty());
-        taskClip.setArcWidth(8);
-        taskClip.setArcHeight(8);
-        box.setClip(taskClip);
-        Label title = new Label(task.getTitle());
-        title.getStyleClass().add("task-title");
-        title.setMinWidth(0);
-        title.setMaxWidth(Double.MAX_VALUE);
-        double timedHeight = taskEntryHeight(task.getDuration(), minuteHeight);
-        double titleFontSize = taskTitleFontSize(timedHeight);
-        boolean compact = titleFontSize < TASK_TITLE_MAX_FONT_SIZE;
-        title.setWrapText(!compact);
-        title.setTextOverrun(compact ? OverrunStyle.ELLIPSIS : OverrunStyle.CLIP);
-        if (compact) {
-            box.getStyleClass().add("task-entry-compact");
-            box.setStyle("-fx-padding: 0 4;");
-            title.setStyle(String.format(Locale.ROOT, "-fx-font-size: %.2fpx;", titleFontSize));
-        }
-        Tooltip fullTitle = new Tooltip(task.getTitle());
-        fullTitle.setWrapText(true);
-        fullTitle.setMaxWidth(420);
-        fullTitle.setStyle("-fx-font-size: 12px;");
-        fullTitle.setShowDelay(Duration.millis(250));
-        fullTitle.setShowDuration(Duration.INDEFINITE);
-        title.setTooltip(fullTitle);
-        Tooltip.install(box, fullTitle);
-        setTaskHeight(box, timedHeight);
-        Label time = new Label();
-        time.getStyleClass().add("task-time");
-        updateTimeLabel(time, task.getStartMin(), task.getDuration());
-        Label description = new Label(task.getDescription());
-        description.getStyleClass().add("task-desc");
-        List<Note> linkedNotes = noteIntegration.notesForTask(task.getId());
-        FlowPane noteLinks = null;
-        if (!linkedNotes.isEmpty()) {
-            noteLinks = new FlowPane(4, 2);
-            noteLinks.getStyleClass().add("calendar-note-links");
-            double maximumLinkWidth = Math.max(48, dayWidth - margin * 4);
-            for (Note linked : linkedNotes) {
-                String noteTitle = linked.getTitle().isBlank() ? "Untitled note" : linked.getTitle();
-                Button openNote = new Button(noteTitle);
-                openNote.getStyleClass().add("calendar-note-link");
-                openNote.setFocusTraversable(false);
-                openNote.setMaxWidth(maximumLinkWidth);
-                openNote.setTextOverrun(OverrunStyle.ELLIPSIS);
-                openNote.setTooltip(new Tooltip("Open note: " + noteTitle));
-                openNote.setOnAction(event -> noteIntegration.openNote(linked.getId()));
-                openNote.setOnMousePressed(javafx.event.Event::consume);
-                openNote.setOnMouseReleased(javafx.event.Event::consume);
-                noteLinks.getChildren().add(openNote);
-            }
-        }
-        Region spacer = new Region();
-        VBox.setVgrow(spacer, Priority.ALWAYS);
-        Region resizer = new Region();
-        resizer.getStyleClass().add("task-resize-hit-area");
-        resizer.setPickOnBounds(true);
-        resizer.setMouseTransparent(false);
-        String idleResizeStyle = "-fx-background-color: transparent; -fx-cursor: s-resize;";
-        resizer.setStyle(idleResizeStyle);
-        resizer.setOnMouseEntered(event -> resizer.setStyle(
-                "-fx-background-color: rgba(248,250,252,0.38);"
-                        + " -fx-background-insets: 0 0 8 0; -fx-cursor: s-resize;"));
-        resizer.setOnMouseExited(event -> resizer.setStyle(idleResizeStyle));
-        box.setOnMousePressed(event -> {
-            if (event.getButton() != MouseButton.PRIMARY) return;
-            dragAnchorY = event.getSceneY();
-            dragAnchorX = event.getSceneX();
-            dragInitialTop = AnchorPane.getTopAnchor(box);
-            dragTargetDayOffset = dayOffset;
-            draggingTask = true;
-            box.getStyleClass().add("task-entry-dragging");
-            box.toFront();
-            resizer.toFront();
-        });
-        box.setOnMouseDragged(event -> {
-            if (!event.isPrimaryButtonDown()) return;
-            int proposed = (int) ((dragInitialTop + event.getSceneY() - dragAnchorY - topInset) / minuteHeight);
-            task.setStartMin(Math.max(0, Math.min(Task.MINUTES_PER_DAY - task.getDuration(), proposed)));
-            AnchorPane.setTopAnchor(box, topInset + task.getStartMin() * minuteHeight);
-            if (viewMode.equals("Week")) {
-                double weekDayWidth = timelineWidth() / 7.0;
-                double x = dayOffset * weekDayWidth + event.getSceneX() - dragAnchorX;
-                dragTargetDayOffset = Math.max(0, Math.min(6, (int) Math.floor((x + weekDayWidth / 2) / weekDayWidth)));
-                AnchorPane.setLeftAnchor(box, dragTargetDayOffset * weekDayWidth + margin);
-            }
-            positionTaskResizeHandle(resizer, box);
-            updateTimeLabel(time, task.getStartMin(), task.getDuration());
-        });
-        box.setOnMouseReleased(event -> {
-            if (!draggingTask) return;
-            draggingTask = false;
-            box.getStyleClass().remove("task-entry-dragging");
-            if (viewMode.equals("Week")) {
-                LocalDate source = weekStartDate.plusDays(dayOffset);
-                LocalDate target = weekStartDate.plusDays(dragTargetDayOffset);
-                if (!source.equals(target)) {
-                    removeTask(source, task);
-                    addTask(target, task);
-                    selectDate(target);
-                    return;
-                }
-            }
-            updateSidebar();
-            notifyDataChanged();
-        });
-        box.setFocusTraversable(true);
-        box.setOnMouseClicked(event -> {
-            if (isButtonTarget(event.getTarget(), box)) {
-                event.consume();
-                return;
-            }
-            box.requestFocus();
-            if (event.getButton() == MouseButton.PRIMARY || event.getButton() == MouseButton.SECONDARY) {
-                if (viewMode.equals("Week")) datePicker.setValue(weekStartDate.plusDays(dayOffset));
-                showTaskDialog(task, task.getStartMin(), task.getDuration(), task.getDescription());
-            }
-        });
-        box.setOnKeyPressed(event -> {
-            if (event.getCode() != KeyCode.BACK_SPACE && event.getCode() != KeyCode.DELETE) return;
-            LocalDate date = viewMode.equals("Day") ? datePicker.getValue() : weekStartDate.plusDays(dayOffset);
-            unlinkNotes(task.getId());
-            removeTask(date, task);
-            render();
-            updateSidebar();
-            notifyDataChanged();
-        });
-        if (compact) {
-            StackPane compactContent = new StackPane(title);
-            compactContent.setMinHeight(0);
-            compactContent.setMaxHeight(Double.MAX_VALUE);
-            VBox.setVgrow(compactContent, Priority.ALWAYS);
-            StackPane.setAlignment(title, javafx.geometry.Pos.CENTER_LEFT);
-            Tooltip.install(compactContent, fullTitle);
-            box.getChildren().add(compactContent);
-        } else {
-            box.getChildren().add(title);
-            box.getChildren().addAll(time, description);
-            if (noteLinks != null) box.getChildren().add(noteLinks);
-            box.getChildren().add(spacer);
-        }
-        timelineArea.getChildren().add(box);
-        setTaskWidth(resizer, taskEntryWidth(dayWidth, margin));
-        setTaskHeight(resizer, TASK_RESIZE_HIT_HEIGHT);
-        Tooltip.install(resizer, fullTitle);
-        timelineArea.getChildren().add(resizer);
-        positionTaskResizeHandle(resizer, box);
-        taskResizeTargets.add(new TaskResizeTarget(task, box, resizer, time, minuteHeight));
-    }
-
-    private void setupTaskResizeGestures() {
-        timelineArea.addEventFilter(MouseEvent.MOUSE_PRESSED, event -> {
-            if (event.getButton() != MouseButton.PRIMARY) return;
-            TaskResizeTarget target = findTaskResizeTarget(event.getX(), event.getY());
-            if (target == null) return;
-            activeResizeTarget = target;
-            suppressClickAfterResize = true;
-            resizeStartScreenY = event.getScreenY();
-            resizeStartDuration = target.task().getDuration();
-            target.taskBox().toFront();
-            target.resizeHandle().toFront();
-            event.consume();
-        });
-        timelineArea.addEventFilter(MouseEvent.MOUSE_DRAGGED, event -> {
-            if (activeResizeTarget == null || !event.isPrimaryButtonDown()) return;
-            Task task = activeResizeTarget.task();
-            int maximum = Task.MINUTES_PER_DAY - task.getStartMin();
-            task.setDuration(taskDurationAfterResize(resizeStartDuration,
-                    event.getScreenY() - resizeStartScreenY, activeResizeTarget.minuteHeight(), maximum));
-            setTaskHeight(activeResizeTarget.taskBox(),
-                    taskEntryHeight(task.getDuration(), activeResizeTarget.minuteHeight()));
-            positionTaskResizeHandle(activeResizeTarget.resizeHandle(), activeResizeTarget.taskBox());
-            updateTimeLabel(activeResizeTarget.timeLabel(), task.getStartMin(), task.getDuration());
-            updateSidebar();
-            event.consume();
-        });
-        timelineArea.addEventFilter(MouseEvent.MOUSE_RELEASED, event -> {
-            if (activeResizeTarget == null) return;
-            activeResizeTarget = null;
-            notifyDataChanged();
-            Platform.runLater(() -> {
-                render();
-                updateSidebar();
-                suppressClickAfterResize = false;
-            });
-            event.consume();
-        });
-        timelineArea.addEventFilter(MouseEvent.MOUSE_CLICKED, event -> {
-            if (!suppressClickAfterResize) return;
-            suppressClickAfterResize = false;
-            event.consume();
-        });
-    }
-
-    private TaskResizeTarget findTaskResizeTarget(double x, double y) {
-        for (int index = taskResizeTargets.size() - 1; index >= 0; index--) {
-            TaskResizeTarget target = taskResizeTargets.get(index);
-            double left = AnchorPane.getLeftAnchor(target.taskBox());
-            double top = AnchorPane.getTopAnchor(target.taskBox());
-            if (taskResizeHit(x, y, left, top, target.taskBox().getPrefWidth(),
-                    target.taskBox().getPrefHeight())) return target;
-        }
-        return null;
-    }
-
-    private void positionTaskResizeHandle(Region resizeHandle, Region taskBox) {
-        AnchorPane.setLeftAnchor(resizeHandle, AnchorPane.getLeftAnchor(taskBox));
-        AnchorPane.setTopAnchor(resizeHandle, AnchorPane.getTopAnchor(taskBox)
-                + taskBox.getPrefHeight() - TASK_RESIZE_OVERLAP);
-    }
-
-    /**
-     * A task must stay inside its day column even when a title, time, or linked-note button has a
-     * larger computed minimum width. A preferred width alone is not a constraint in JavaFX.
-     */
-    private void setTaskWidth(Region taskBox, double width) {
-        double exactWidth = Math.max(0, width);
-        taskBox.setMinWidth(exactWidth);
-        taskBox.setPrefWidth(exactWidth);
-        taskBox.setMaxWidth(exactWidth);
-    }
-
-    static double taskEntryWidth(double dayWidth, double margin) {
-        return Math.max(0, dayWidth - margin * 2);
-    }
-
-    /** Keeps a task's colored bounds exactly aligned with its scheduled time range. */
-    private void setTaskHeight(Region taskBox, double height) {
-        double exactHeight = Math.max(0, height);
-        taskBox.setMinHeight(exactHeight);
-        taskBox.setPrefHeight(exactHeight);
-        taskBox.setMaxHeight(exactHeight);
-    }
-
-    static double taskEntryHeight(int durationMinutes, double minuteHeight) {
-        return Math.max(0, durationMinutes * minuteHeight);
-    }
-
-    static double taskTitleFontSize(double taskHeight) {
-        double proportionalSize = TASK_TITLE_MAX_FONT_SIZE * Math.max(0, taskHeight)
-                / TASK_TITLE_FULL_SIZE_HEIGHT;
-        return clamp(proportionalSize, TASK_TITLE_MIN_FONT_SIZE, TASK_TITLE_MAX_FONT_SIZE);
-    }
-
-    static int taskDurationAfterResize(int initialDuration, double dragPixels,
-                                       double minuteHeight, int maximumDuration) {
-        if (minuteHeight <= 0) return Math.max(Task.MIN_DURATION_MINUTES,
-                Math.min(maximumDuration, initialDuration));
-        int minuteDelta = (int) Math.round(dragPixels / minuteHeight);
-        return Math.max(Task.MIN_DURATION_MINUTES,
-                Math.min(maximumDuration, initialDuration + minuteDelta));
-    }
-
-    static boolean taskResizeHit(double x, double y, double left, double top,
-                                 double width, double height) {
-        double end = top + height;
-        return x >= left && x <= left + width
-                && y >= end - TASK_RESIZE_OVERLAP
-                && y <= end + TASK_RESIZE_HIT_HEIGHT - TASK_RESIZE_OVERLAP;
-    }
-
-    private void updateTimeLabel(Label label, int start, int duration) {
-        int end = start + duration;
-        label.setText(String.format("%02d:%02d - %02d:%02d", start / 60, start % 60, end / 60, end % 60));
+    static boolean taskResizeHit(double x, double y, double left, double top, double width, double height) {
+        return x >= left && x <= left + width && y >= top + height - 3 && y <= top + height + 7;
     }
 
     private void updateSidebar() {
         updateSelectedPeriodLabel();
         miniMonthYearLabel.setText(currentMiniMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.ENGLISH)));
         miniCalendarGrid.getChildren().clear();
-        String[] days = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
+        String[] days = new String[7];
+        for (int index = 0; index < 7; index++) days[index] = preferences.firstDay().plus(index)
+                .getDisplayName(java.time.format.TextStyle.SHORT, Locale.getDefault());
         for (int index = 0; index < days.length; index++) {
             Label header = new Label(days[index]);
             header.getStyleClass().addAll("calendar-day", "calendar-day-header");
             miniCalendarGrid.add(header, index, 0);
         }
         LocalDate first = currentMiniMonth.atDay(1);
-        int dayOffset = first.getDayOfWeek().getValue() % 7;
+        int dayOffset = Math.floorMod(first.getDayOfWeek().getValue() - preferences.firstDay().getValue(), 7);
         for (int index = 0; index < currentMiniMonth.lengthOfMonth(); index++) {
             LocalDate date = first.plusDays(index);
             Button day = new Button(String.valueOf(index + 1));
@@ -933,7 +673,7 @@ public final class CalendarController {
             upcomingActivitiesList.getChildren().add(empty);
             return;
         }
-        for (SidebarTask sidebarTask : tasks) {
+        for (SidebarTask sidebarTask : tasks.stream().limit(50).toList()) {
             Task task = sidebarTask.task();
             VBox item = new VBox(5);
             item.getStyleClass().add("activity-item");
@@ -941,6 +681,8 @@ public final class CalendarController {
                     task.getStartMin() % 60, (task.getStartMin() + task.getDuration()) / 60,
                     (task.getStartMin() + task.getDuration()) % 60));
             time.getStyleClass().add("activity-time");
+            if (task.isAllDay()) time.setText("All day");
+            else if (task.getStartMin() + task.getDuration() > 1440) time.setText(CalendarBoard.time(task.getStartMin()) + " · " + task.getDuration() / 60 + " h");
             String titleText = weekView
                     ? sidebarTask.date().format(DateTimeFormatter.ofPattern("EEEE d", Locale.ENGLISH)) + " " + task.getTitle()
                     : task.getTitle();
@@ -980,6 +722,11 @@ public final class CalendarController {
             });
             upcomingActivitiesList.getChildren().add(item);
         }
+        if (tasks.size() > 50) {
+            Button more = new Button("View all " + tasks.size() + " appointments"); more.getStyleClass().add("text-button");
+            more.setOnAction(event -> showAgenda(weekView ? weekStart(selectedDate()) : selectedDate()));
+            upcomingActivitiesList.getChildren().add(more);
+        }
     }
 
     /** Keeps date buttons square while weekday headers expand across the seven equal columns. */
@@ -1015,6 +762,7 @@ public final class CalendarController {
     }
 
     private void updateSelectedPeriodLabel() {
+        if (board != null) return;
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
         if ("Week".equals(viewMode)) {
             LocalDate start = weekStartDate;
@@ -1026,24 +774,12 @@ public final class CalendarController {
     }
 
     private List<SidebarTask> sidebarTasks(boolean weekView) {
-        if (!weekView) return tasksByDate.getOrDefault(datePicker.getValue(), List.of()).stream()
-                .sorted(Comparator.comparingInt(Task::getStartMin))
-                .map(task -> new SidebarTask(datePicker.getValue(), task))
-                .toList();
-
-        LocalDate start = weekStartDate;
-        return tasksByDate.entrySet().stream()
-                .filter(entry -> !entry.getKey().isBefore(start) && entry.getKey().isBefore(start.plusDays(7)))
-                .flatMap(entry -> entry.getValue().stream().map(task -> new SidebarTask(entry.getKey(), task)))
-                .sorted(Comparator.comparing(SidebarTask::date)
-                        .thenComparing(entry -> entry.task().getStartMin()))
-                .toList();
+        LocalDate start = weekView ? weekStart(selectedDate()) : selectedDate();
+        return CalendarOccurrenceService.between(tasksByDate, start, weekView ? start.plusDays(6) : start).stream()
+                .map(entry -> new SidebarTask(entry.date(), entry.task())).toList();
     }
 
     private record SidebarTask(LocalDate date, Task task) { }
-
-    private record TaskResizeTarget(Task task, VBox taskBox, Region resizeHandle,
-                                    Label timeLabel, double minuteHeight) { }
 
     private void selectDate(LocalDate date) {
         if (date.equals(datePicker.getValue())) refreshForSelectedDate(date);
@@ -1058,178 +794,8 @@ public final class CalendarController {
         notifyDataChanged();
     }
 
-    private void showTaskDialog(Task existingTask, int startMin, int duration, String initialDescription) {
-        Dialog<ButtonType> dialog = new Dialog<>();
-        dialog.setTitle(existingTask == null ? "New Task" : "Edit Task");
-        themeService.applyTo(dialog);
-        ButtonType save = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE);
-        ButtonType delete = new ButtonType("Delete", ButtonBar.ButtonData.OTHER);
-        dialog.getDialogPane().getButtonTypes().addAll(save, ButtonType.CANCEL);
-        if (existingTask != null) dialog.getDialogPane().getButtonTypes().add(1, delete);
-        GridPane grid = new GridPane();
-        grid.setHgap(10);
-        grid.setVgap(10);
-        grid.setPadding(new javafx.geometry.Insets(20, 100, 10, 10));
-        TextField title = new TextField(existingTask == null ? "" : existingTask.getTitle());
-        TextArea description = new TextArea(existingTask == null ? initialDescription : existingTask.getDescription());
-        description.setPrefRowCount(3);
-        TextField startHour = timeField(startMin / 60);
-        TextField startMinute = timeField(startMin % 60);
-        TextField endHour = timeField((startMin + duration) / 60);
-        TextField endMinute = timeField((startMin + duration) % 60);
-        LocalDate sourceDate = datePicker.getValue();
-        DatePicker taskDate = new DatePicker(sourceDate);
-        ComboBox<String> color = new ComboBox<>(FXCollections.observableArrayList(
-                "Blue", "Red", "Green", "Yellow", "Orange", "Purple"));
-        color.setValue(existingTask == null ? "Blue" : existingTask.getColor());
-        Button noteMenu = new Button("No linked notes ▾");
-        noteMenu.getStyleClass().add("task-note-selector");
-        noteMenu.setMaxWidth(Double.MAX_VALUE);
-        Popup notePickerPopup = new Popup();
-        notePickerPopup.setAutoFix(true);
-        notePickerPopup.setAutoHide(true);
-        notePickerPopup.setHideOnEscape(true);
-        notePickerPopup.setConsumeAutoHidingEvents(false);
-        Map<Note, BooleanProperty> noteSelections = new java.util.LinkedHashMap<>();
-        String existingTaskId = existingTask == null ? "" : existingTask.getId();
-        Runnable updateNoteMenuText = () -> {
-            long selected = noteSelections.values().stream().filter(BooleanProperty::get).count();
-            noteMenu.setText((selected == 0 ? "No linked notes"
-                    : selected + (selected == 1 ? " linked note" : " linked notes")) + "  ▾");
-        };
-        noteIntegration.notes().forEach(candidate -> {
-            BooleanProperty choice = new SimpleBooleanProperty(
-                    !existingTaskId.isBlank() && candidate.isLinkedToTask(existingTaskId));
-            choice.addListener((observable, oldValue, newValue) -> updateNoteMenuText.run());
-            noteSelections.put(candidate, choice);
-        });
-        if (noteSelections.isEmpty()) {
-            noteMenu.setText("No notes available");
-            noteMenu.setDisable(true);
-        } else {
-            TextField noteSearch = new TextField();
-            noteSearch.setPromptText("Search notes by title…");
-            noteSearch.getStyleClass().add("note-picker-search");
-            TreeView<NotePickerItem> noteTree = new TreeView<>();
-            noteTree.getStyleClass().add("note-picker-tree");
-            noteTree.setPrefSize(420, 330);
-            noteTree.setCellFactory(ignored -> new TreeCell<>() {
-                @Override protected void updateItem(NotePickerItem item, boolean empty) {
-                    super.updateItem(item, empty);
-                    setText(null);
-                    setGraphic(null);
-                    if (empty || item == null) return;
-                    if (item.note() == null) {
-                        setText(item.label());
-                        getStyleClass().remove("note-picker-file");
-                        return;
-                    }
-                    if (!getStyleClass().contains("note-picker-file")) getStyleClass().add("note-picker-file");
-                    CheckBox choice = new CheckBox(item.label() + " " + item.note().getFormat().extension());
-                    BooleanProperty selected = noteSelections.get(item.note());
-                    choice.setSelected(selected.get());
-                    choice.selectedProperty().addListener((observable, oldValue, newValue) -> selected.set(newValue));
-                    choice.setMaxWidth(Double.MAX_VALUE);
-                    setGraphic(choice);
-                }
-            });
-            Runnable refreshNoteTree = () -> noteTree.setRoot(buildNotePickerTree(
-                    noteIntegration.notes(), noteIntegration.folders(), noteSearch.getText()));
-            noteSearch.textProperty().addListener((observable, oldValue, newValue) -> refreshNoteTree.run());
-            refreshNoteTree.run();
-            Label hint = new Label("Expand folders and select one or more notes");
-            hint.getStyleClass().add("note-picker-hint");
-            VBox picker = new VBox(8, noteSearch, noteTree, hint);
-            picker.getStyleClass().add("note-picker");
-            notePickerPopup.getContent().add(picker);
-            noteMenu.setOnAction(event -> {
-                if (notePickerPopup.isShowing()) {
-                    notePickerPopup.hide();
-                    return;
-                }
-                Bounds anchor = noteMenu.localToScreen(noteMenu.getBoundsInLocal());
-                if (anchor == null || noteMenu.getScene() == null) return;
-                picker.getStylesheets().setAll(noteMenu.getScene().getStylesheets());
-                notePickerPopup.show(noteMenu, anchor.getMinX(), anchor.getMaxY() + 4);
-                Platform.runLater(noteSearch::requestFocus);
-            });
-        }
-        updateNoteMenuText.run();
-        grid.add(new Label("Title:"), 0, 0); grid.add(title, 1, 0);
-        grid.add(new Label("Date:"), 0, 1); grid.add(taskDate, 1, 1);
-        grid.add(new Label("Start (H:M):"), 0, 2); grid.add(new HBox(5, startHour, new Label(":"), startMinute), 1, 2);
-        grid.add(new Label("End (H:M):"), 0, 3); grid.add(new HBox(5, endHour, new Label(":"), endMinute), 1, 3);
-        grid.add(new Label("Color:"), 0, 4); grid.add(color, 1, 4);
-        grid.add(new Label("Description:"), 0, 5); grid.add(DialogService.withResizeGrip(description), 1, 5);
-        grid.add(new Label("Linked notes:"), 0, 6); grid.add(noteMenu, 1, 6);
-        if (existingTask != null && !noteIntegration.notesForTask(existingTask.getId()).isEmpty()) {
-            FlowPane links = new FlowPane(6, 6);
-            links.setPrefWrapLength(340);
-            for (Note linked : noteIntegration.notesForTask(existingTask.getId())) {
-                Button open = new Button(linked.getTitle().isBlank() ? "Untitled note" : linked.getTitle());
-                open.getStyleClass().add("dialog-note-link");
-                open.setOnAction(event -> {
-                    dialog.close();
-                    noteIntegration.openNote(linked.getId());
-                });
-                links.getChildren().add(open);
-            }
-            grid.add(new Label("Open linked:"), 0, 7); grid.add(links, 1, 7);
-        }
-        dialog.getDialogPane().setContent(grid);
-        dialog.setOnHidden(event -> notePickerPopup.hide());
-        Optional<ButtonType> result = dialog.showAndWait();
-        if (result.isEmpty()) return;
-        LocalDate dateToDisplay = sourceDate;
-        if (result.get() == delete && existingTask != null) {
-            unlinkNotes(existingTask.getId());
-            removeTask(sourceDate, existingTask);
-        } else if (result.get() == save) {
-            try {
-                int sh = Integer.parseInt(startHour.getText().trim());
-                int sm = Integer.parseInt(startMinute.getText().trim());
-                int eh = Integer.parseInt(endHour.getText().trim());
-                int em = Integer.parseInt(endMinute.getText().trim());
-                boolean invalidStart = sh < 0 || sh > 23 || sm < 0 || sm > 59;
-                boolean invalidEnd = eh < 0 || eh > 24 || em < 0 || em > 59 || eh == 24 && em != 0;
-                if (invalidStart || invalidEnd) throw new NumberFormatException();
-                LocalDate targetDate = taskDate.getValue();
-                if (targetDate == null) {
-                    dialogService.showError("Invalid Date", "Please choose a date for the activity.");
-                    return;
-                }
-                int newStart = sh * 60 + sm;
-                int newEnd = eh * 60 + em;
-                if (newEnd <= newStart) {
-                    dialogService.showError("Invalid Time", "The end time must be after the start time.");
-                    return;
-                }
-                Task replacement = existingTask == null
-                        ? new Task(title.getText(), description.getText(), newStart, newEnd - newStart, color.getValue())
-                        : new Task(existingTask.getId(), title.getText(), description.getText(), newStart,
-                                newEnd - newStart, color.getValue(), existingTask.isCompleted());
-                if (existingTask != null) removeTask(sourceDate, existingTask);
-                addTask(targetDate, replacement);
-                noteSelections.forEach((candidate, selection) -> {
-                    if (selection.get()) candidate.linkTask(replacement.getId());
-                    else candidate.unlinkTask(replacement.getId());
-                });
-                dateToDisplay = targetDate;
-            } catch (NumberFormatException exception) {
-                dialogService.showError("Invalid Time", "Use 00:00–23:59 for the start and up to 24:00 for the end.");
-                return;
-            } catch (IllegalArgumentException exception) {
-                dialogService.showError("Invalid Time", exception.getMessage());
-                return;
-            }
-        }
-        selectDate(dateToDisplay);
-    }
-
-    private TextField timeField(int value) {
-        TextField field = new TextField(String.format("%02d", value));
-        field.setPrefWidth(50);
-        return field;
+    private void showTaskDialog(Task task, int start, int duration, String description) {
+        editItem(datePicker.getValue(), task, start, duration, description, false);
     }
 
     private void notifyDataChanged() {
@@ -1246,66 +812,6 @@ public final class CalendarController {
             if (current instanceof ButtonBase) return true;
         }
         return false;
-    }
-
-    private TreeItem<NotePickerItem> buildNotePickerTree(List<Note> notes, List<NoteFolder> folders,
-                                                          String searchText) {
-        String query = searchText == null ? "" : searchText.trim().toLowerCase(Locale.ROOT);
-        TreeItem<NotePickerItem> root = new TreeItem<>(new NotePickerItem("Home", null));
-        root.setExpanded(true);
-        Map<String, TreeItem<NotePickerItem>> folderItems = new HashMap<>();
-        List<NoteFolder> sortedFolders = folders.stream()
-                .sorted(Comparator.comparing(NoteFolder::getName, String.CASE_INSENSITIVE_ORDER)).toList();
-        sortedFolders.forEach(folder -> folderItems.put(folder.getId(),
-                new TreeItem<>(new NotePickerItem(folder.getName(), null))));
-
-        sortedFolders.forEach(folder -> {
-            TreeItem<NotePickerItem> item = folderItems.get(folder.getId());
-            TreeItem<NotePickerItem> parent = folderItems.get(folder.getParentFolderId());
-            if (parent == null || createsTreeCycle(item, parent)) root.getChildren().add(item);
-            else parent.getChildren().add(item);
-        });
-
-        notes.stream()
-                .filter(note -> query.isEmpty() || displayNoteTitle(note).toLowerCase(Locale.ROOT).contains(query))
-                .sorted(Comparator.comparing(this::displayNoteTitle, String.CASE_INSENSITIVE_ORDER))
-                .forEach(note -> {
-                    TreeItem<NotePickerItem> parent = folderItems.get(note.getFolderId());
-                    if (parent == null) parent = root;
-                    parent.getChildren().add(new TreeItem<>(new NotePickerItem(displayNoteTitle(note), note)));
-                });
-
-        if (!query.isEmpty()) {
-            pruneEmptyNoteFolders(root);
-            expandTree(root);
-        }
-        return root;
-    }
-
-    private boolean createsTreeCycle(TreeItem<NotePickerItem> item, TreeItem<NotePickerItem> parent) {
-        Set<TreeItem<NotePickerItem>> visited = new HashSet<>();
-        for (TreeItem<NotePickerItem> cursor = parent; cursor != null && visited.add(cursor); cursor = cursor.getParent()) {
-            if (cursor == item) return true;
-        }
-        return false;
-    }
-
-    private boolean pruneEmptyNoteFolders(TreeItem<NotePickerItem> item) {
-        item.getChildren().removeIf(this::pruneEmptyNoteFolders);
-        return item.getValue().note() == null && item.getParent() != null && item.getChildren().isEmpty();
-    }
-
-    private void expandTree(TreeItem<NotePickerItem> item) {
-        item.setExpanded(true);
-        item.getChildren().forEach(this::expandTree);
-    }
-
-    private String displayNoteTitle(Note note) {
-        return note.getTitle().isBlank() ? "Untitled note" : note.getTitle();
-    }
-
-    private record NotePickerItem(String label, Note note) {
-        @Override public String toString() { return label; }
     }
 
     public interface NoteIntegration {

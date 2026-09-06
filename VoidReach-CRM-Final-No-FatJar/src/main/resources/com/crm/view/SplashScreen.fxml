@@ -4,6 +4,7 @@
 <?import javafx.scene.image.*?>
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.shape.Rectangle?>
+<?import com.crm.view.BrandMark?>
 
 <StackPane xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1" 
            fx:controller="com.crm.controller.SplashScreenController"
@@ -21,9 +22,7 @@
         </padding>
 
         <StackPane>
-            <ImageView fx:id="logoView" fitHeight="90" fitWidth="90" pickOnBounds="true" preserveRatio="true">
-                <Image url="@/images/app-icon.png"/>
-            </ImageView>
+            <BrandMark fx:id="logoView" prefWidth="72" prefHeight="72" maxWidth="72" maxHeight="72"/>
         </StackPane>
 
         <VBox alignment="CENTER" spacing="5">

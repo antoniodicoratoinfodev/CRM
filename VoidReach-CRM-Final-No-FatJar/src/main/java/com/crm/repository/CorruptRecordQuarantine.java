@@ -31,6 +31,10 @@ final class CorruptRecordQuarantine {
     }
 
     static void writeBestEffort(Path sourceFile, List<RejectedRecord> rejected) {
+        writeBestEffort(sourceFile, rejected, null);
+    }
+
+    static void writeBestEffort(Path sourceFile, List<RejectedRecord> rejected, String userId) {
         if (rejected.isEmpty()) return;
         Properties quarantine = new Properties();
         quarantine.setProperty(AtomicPropertiesStore.SCHEMA_VERSION_KEY, String.valueOf(SCHEMA_VERSION));
@@ -54,7 +58,8 @@ final class CorruptRecordQuarantine {
         }
         Path quarantineFile = sourceFile.resolveSibling(sourceFile.getFileName() + ".corrupt.properties");
         try {
-            AtomicPropertiesStore.store(quarantineFile, quarantine, "VoidReach CRM quarantined local records");
+            AtomicPropertiesStore.store(quarantineFile, userId == null ? quarantine :
+                    com.crm.service.WorkspaceVaultService.seal(quarantine, userId), "VoidReach CRM quarantined local records");
         } catch (IOException ignored) {
             // Loading valid records is more important than failing because diagnostics cannot be persisted.
         }

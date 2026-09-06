@@ -23,6 +23,6 @@ jpackage \
   --input "$INPUT_DIR" \
   --main-jar "$APP_JAR" \
   --main-class com.crm.app.AppLauncher \
-  --icon src/main/packaging/macos/VoidReach.icns \
-  --java-options --enable-native-access=javafx.graphics \
+  --icon src/main/packaging/macos/VoidReach-v2.icns \
+  --java-options --enable-native-access=ALL-UNNAMED \
   --dest "$OUTPUT_DIR"

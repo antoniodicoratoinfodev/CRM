@@ -9,6 +9,7 @@
 <?import javafx.scene.shape.Circle?>
 <?import org.fxmisc.richtext.CodeArea?>
 <?import org.kordamp.ikonli.javafx.FontIcon?>
+<?import com.crm.view.BrandMark?>
 
 <BorderPane fx:id="appShell" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
             fx:controller="com.crm.controller.MainController" styleClass="app-shell">
@@ -16,14 +17,10 @@
         <HBox fx:id="leftSidebarWrapper">
         <VBox fx:id="leftPanel" prefWidth="216" minWidth="216" maxWidth="216" styleClass="sidebar">
             <HBox alignment="CENTER_LEFT" spacing="11" styleClass="brand-lockup">
-                <StackPane styleClass="brand-mark">
-                    <ImageView fitWidth="30" fitHeight="30" preserveRatio="true" smooth="true">
-                        <image><Image url="@/images/app-icon.png"/></image>
-                    </ImageView>
-                </StackPane>
+                <BrandMark prefWidth="36" prefHeight="36" minWidth="36" maxWidth="36"/>
                 <VBox spacing="-2">
                     <Label text="VoidReach" styleClass="brand-title"/>
-                    <Label text="CRM WORKSPACE" styleClass="brand-caption"/>
+                    <Label text="Personal workspace" styleClass="brand-caption"/>
                 </VBox>
             </HBox>
 
@@ -64,23 +61,44 @@
 
     <center>
         <VBox fx:id="mainSurface" styleClass="main-surface">
-            <HBox minHeight="72" prefHeight="72" alignment="CENTER_LEFT" spacing="16" styleClass="navbar">
+            <HBox minHeight="68" prefHeight="68" alignment="CENTER_LEFT" spacing="10" styleClass="navbar">
                 <Button fx:id="leftSidebarToggleButton" onAction="#handleToggleNavigation" styleClass="icon-button" focusTraversable="false">
                     <graphic><FontIcon iconLiteral="fas-bars" iconSize="16" styleClass="toolbar-icon"/></graphic>
                     <tooltip><Tooltip text="Show or hide navigation"/></tooltip>
                 </Button>
-                <VBox spacing="2" alignment="CENTER_LEFT" styleClass="navbar-status-group">
-                    <Label text="Your workspace" styleClass="topbar-title"/>
+                <VBox fx:id="topbarStatusGroup" spacing="2" alignment="CENTER_LEFT" styleClass="navbar-status-group">
+                    <Label fx:id="topbarTitleLabel" text="Home" styleClass="topbar-title"/>
                     <Label fx:id="saveStatusLabel" text="" styleClass="save-status"/>
                 </VBox>
                 <Region HBox.hgrow="ALWAYS"/>
-                <Button styleClass="icon-button" focusTraversable="false">
-                    <graphic><FontIcon iconLiteral="fas-question-circle" iconSize="16" styleClass="toolbar-icon"/></graphic>
-                    <tooltip><Tooltip text="Help"/></tooltip>
+                <Button fx:id="workspaceSearchButton" onAction="#handleWorkspaceSearch" minWidth="160" prefWidth="276" maxWidth="320"
+                        accessibleText="Search workspace and quick actions" styleClass="workspace-search-button" HBox.hgrow="ALWAYS">
+                    <graphic><HBox spacing="10" alignment="CENTER_LEFT">
+                        <FontIcon iconLiteral="fas-search" iconSize="13" styleClass="toolbar-icon"/>
+                        <Label text="Search anything…" styleClass="workspace-search-prompt"/>
+                        <Region HBox.hgrow="ALWAYS"/>
+                        <Label fx:id="searchShortcutLabel" text="Ctrl K" styleClass="keyboard-shortcut"/>
+                    </HBox></graphic>
+                    <tooltip><Tooltip text="Search contacts, tasks, notes, and quick actions"/></tooltip>
                 </Button>
-                <Button styleClass="icon-button" focusTraversable="false">
-                    <graphic><FontIcon iconLiteral="fas-bell" iconSize="16" styleClass="toolbar-icon"/></graphic>
-                    <tooltip><Tooltip text="Notifications"/></tooltip>
+                <Button fx:id="helpButton" onAction="#handleHelp" styleClass="icon-button" accessibleText="Help and keyboard shortcuts">
+                    <graphic><FontIcon iconLiteral="far-question-circle" iconSize="16" styleClass="toolbar-icon"/></graphic>
+                    <tooltip><Tooltip text="Help and shortcuts (F1)"/></tooltip>
+                </Button>
+                <MenuButton text="History" styleClass="workspace-history-menu">
+                    <items>
+                        <MenuItem text="Undo workspace change" onAction="#handleUndo"/>
+                        <MenuItem text="Redo workspace change" onAction="#handleRedo"/>
+                        <SeparatorMenuItem/>
+                        <MenuItem text="Recently deleted…" onAction="#handleTrash"/>
+                    </items>
+                </MenuButton>
+                <Button fx:id="remindersButton" onAction="#handleReviewTasks" styleClass="icon-button" accessibleText="Review tasks">
+                    <graphic><StackPane>
+                        <FontIcon iconLiteral="far-bell" iconSize="16" styleClass="toolbar-icon"/>
+                        <Label fx:id="reminderCountLabel" text="0" visible="false" managed="false" styleClass="reminder-count" StackPane.alignment="TOP_RIGHT"/>
+                    </StackPane></graphic>
+                    <tooltip><Tooltip text="Review overdue and today's tasks"/></tooltip>
                 </Button>
                 <Button fx:id="agendaToggleButton" onAction="#handleToggleAgenda" styleClass="icon-button" focusTraversable="false">
                     <graphic><FontIcon iconLiteral="fas-calendar-alt" iconSize="16" styleClass="toolbar-icon"/></graphic>
@@ -95,7 +113,7 @@
                                     <clip><Circle centerX="20" centerY="20" radius="20"/></clip>
                                 </ImageView>
                             </StackPane>
-                            <VBox spacing="-1" alignment="CENTER_LEFT">
+                            <VBox fx:id="accountDetails" spacing="-1" alignment="CENTER_LEFT">
                                 <Label fx:id="currentUserLabel" text="User" styleClass="account-name"/>
                                 <Label text="Personal account" styleClass="account-caption"/>
                             </VBox>
@@ -117,16 +135,16 @@
                         </VBox>
                         <Region HBox.hgrow="ALWAYS"/>
                         <HBox spacing="10">
-                            <Button text="New contact" onAction="#handleAddContact" styleClass="btn-primary">
-                                <graphic><FontIcon iconLiteral="fas-user-plus" iconSize="12" styleClass="button-icon-light"/></graphic>
+                            <Button text="New contact" onAction="#handleAddContact" styleClass="btn-secondary">
+                                <graphic><FontIcon iconLiteral="fas-user-plus" iconSize="12" styleClass="toolbar-icon"/></graphic>
                             </Button>
-                            <Button text="Open calendar" onAction="#handleOpenToday" styleClass="btn-primary">
-                                <graphic><FontIcon iconLiteral="fas-calendar-day" iconSize="12" styleClass="button-icon-light"/></graphic>
+                            <Button text="New task" onAction="#handleAddTask" styleClass="btn-primary">
+                                <graphic><FontIcon iconLiteral="fas-plus" iconSize="12" styleClass="button-icon-light"/></graphic>
                             </Button>
                         </HBox>
                     </HBox>
 
-                    <HBox spacing="12">
+                    <HBox spacing="0" styleClass="metrics-strip">
                         <VBox styleClass="metric-card" HBox.hgrow="ALWAYS">
                             <Label text="CONTACTS" styleClass="metric-label"/>
                             <Label fx:id="homeContactsCountLabel" text="0" styleClass="metric-value"/>
@@ -135,18 +153,27 @@
                         <VBox styleClass="metric-card" HBox.hgrow="ALWAYS">
                             <Label text="TODAY" styleClass="metric-label"/>
                             <Label fx:id="homeTodayCountLabel" text="0" styleClass="metric-value"/>
-                            <Label text="scheduled tasks" styleClass="metric-caption"/>
+                            <Label text="tasks still open" styleClass="metric-caption"/>
                         </VBox>
                         <VBox styleClass="metric-card" HBox.hgrow="ALWAYS">
                             <Label text="NEXT 7 DAYS" styleClass="metric-label"/>
                             <Label fx:id="homeWeekCountLabel" text="0" styleClass="metric-value"/>
-                            <Label text="tasks on your agenda" styleClass="metric-caption"/>
+                            <Label text="tasks to complete" styleClass="metric-caption"/>
                         </VBox>
                         <VBox styleClass="metric-card, next-activity-card" HBox.hgrow="ALWAYS">
                             <Label text="NEXT TASK" styleClass="metric-label"/>
                             <Label fx:id="homeNextTitleLabel" text="No upcoming tasks" styleClass="next-activity-title"/>
                             <Label fx:id="homeNextTimeLabel" text="" styleClass="metric-caption"/>
                         </VBox>
+                    </HBox>
+
+                    <HBox fx:id="homeFocusSummary" spacing="12" alignment="CENTER_LEFT" styleClass="focus-summary">
+                        <FontIcon fx:id="homeFocusIcon" iconLiteral="far-check-circle" iconSize="20" styleClass="focus-summary-icon"/>
+                        <VBox spacing="3" minWidth="0" HBox.hgrow="ALWAYS">
+                            <Label fx:id="homeFocusTitleLabel" text="You're up to date" styleClass="focus-summary-title"/>
+                            <Label fx:id="homeFocusDetailLabel" text="No overdue tasks. Plan what comes next." wrapText="true" styleClass="focus-summary-detail"/>
+                        </VBox>
+                        <Button fx:id="homeFocusButton" text="View today" onAction="#handleReviewTasks" styleClass="text-button" minWidth="-Infinity"/>
                     </HBox>
 
                     <GridPane hgap="14" vgap="14" VBox.vgrow="ALWAYS">
@@ -172,7 +199,7 @@
                         </VBox>
                         <VBox spacing="12" styleClass="overview-card" GridPane.columnSpan="2" GridPane.rowIndex="1">
                             <HBox alignment="CENTER_LEFT">
-                                <Label text="Address book contacts" styleClass="overview-card-title"/>
+                            <Label text="People to reconnect with" styleClass="overview-card-title"/>
                                 <Region HBox.hgrow="ALWAYS"/>
                                 <Button text="Open contacts" onAction="#handleOpenContacts" styleClass="text-button"/>
                             </HBox>
@@ -191,7 +218,7 @@
                         <Label text="Dashboard" styleClass="section-title"/>
                         <Label text="A practical overview of contacts and scheduled tasks." styleClass="section-subtitle"/>
                     </VBox>
-                    <HBox spacing="12">
+                    <HBox spacing="0" styleClass="metrics-strip">
                         <VBox styleClass="metric-card" HBox.hgrow="ALWAYS">
                             <Label text="TOTAL CONTACTS" styleClass="metric-label"/>
                             <Label fx:id="dashboardContactsCountLabel" text="0" styleClass="metric-value"/>
@@ -200,17 +227,17 @@
                         <VBox styleClass="metric-card" HBox.hgrow="ALWAYS">
                             <Label text="TOTAL TASKS" styleClass="metric-label"/>
                             <Label fx:id="dashboardActivitiesCountLabel" text="0" styleClass="metric-value"/>
-                            <Label text="in the calendar" styleClass="metric-caption"/>
+                            <Label text="tasks and appointments" styleClass="metric-caption"/>
                         </VBox>
                         <VBox styleClass="metric-card" HBox.hgrow="ALWAYS">
                             <Label text="NEXT 7 DAYS" styleClass="metric-label"/>
                             <Label fx:id="dashboardWeekCountLabel" text="0" styleClass="metric-value"/>
                             <Label text="scheduled tasks" styleClass="metric-caption"/>
                         </VBox>
-                        <VBox styleClass="metric-card" HBox.hgrow="ALWAYS">
+                        <VBox styleClass="metric-card, metric-last" HBox.hgrow="ALWAYS">
                             <Label text="PLANNED TIME" styleClass="metric-label"/>
                             <Label fx:id="dashboardHoursCountLabel" text="0 h" styleClass="metric-value"/>
-                            <Label text="across the calendar" styleClass="metric-caption"/>
+                            <Label text="next seven days" styleClass="metric-caption"/>
                         </VBox>
                     </HBox>
                     <GridPane hgap="14" vgap="14" VBox.vgrow="ALWAYS">
@@ -225,7 +252,7 @@
                         </VBox>
                         <VBox spacing="8" styleClass="overview-card, chart-card" GridPane.columnIndex="1" GridPane.rowIndex="0">
                             <Label text="Upcoming workload" styleClass="overview-card-title"/>
-                            <Label text="Number of tasks per day" styleClass="overview-card-subtitle"/>
+                            <Label text="Scheduled hours over the next seven days" styleClass="overview-card-subtitle"/>
                             <BarChart fx:id="dashboardActivityChart" legendVisible="false" categoryGap="18" barGap="3" VBox.vgrow="ALWAYS">
                                 <xAxis><CategoryAxis tickLabelRotation="0"/></xAxis>
                                 <yAxis><NumberAxis forceZeroInRange="true" minorTickVisible="false" tickUnit="1"/></yAxis>
@@ -253,8 +280,8 @@
                         </Button>
                     </HBox>
 
-                    <HBox spacing="10" alignment="CENTER_LEFT" styleClass="toolbar-card">
-                        <TextField fx:id="searchField" promptText="Search contacts…" styleClass="search-bar" prefWidth="230" maxWidth="320" HBox.hgrow="ALWAYS"/>
+                    <FlowPane hgap="8" vgap="8" alignment="CENTER_LEFT" styleClass="toolbar-card">
+                        <TextField fx:id="searchField" promptText="Search contacts…" styleClass="search-bar" prefWidth="230" maxWidth="320"/>
                         <MenuButton fx:id="contactsSortMenu" text="Sort" minWidth="-Infinity" styleClass="btn-secondary, sort-menu"/>
                         <ToggleButton fx:id="contactsInlineEditToggle" text="Quick edit" minWidth="-Infinity" styleClass="btn-secondary, inline-edit-toggle"/>
                         <Button fx:id="addFieldBtn" text="Add field" minWidth="-Infinity" styleClass="btn-secondary">
@@ -265,7 +292,7 @@
                         <ComboBox fx:id="rowsPerPageCombo" prefWidth="86" minWidth="-Infinity"/>
                         <Button fx:id="selectContactsBtn" onAction="#handleToggleContactSelection" text="Select" minWidth="-Infinity" styleClass="btn-secondary"/>
                         <Button fx:id="deleteBtn" onAction="#handleDeleteContact" text="Delete" minWidth="-Infinity" styleClass="btn-secondary, danger-button"/>
-                    </HBox>
+                    </FlowPane>
 
                     <VBox styleClass="data-card" VBox.vgrow="ALWAYS">
                         <TableView fx:id="contactsTable" VBox.vgrow="ALWAYS">
@@ -343,7 +370,7 @@
                         <VBox spacing="5">
                             <Label text="OPERATIONS" styleClass="page-eyebrow"/>
                             <Label text="Tasks" styleClass="section-title"/>
-                            <Label text="Manage all calendar tasks in one place." styleClass="section-subtitle"/>
+                            <Label text="Tasks and appointments. Repeats: past 30 days and next 12 months." wrapText="true" styleClass="section-subtitle"/>
                         </VBox>
                         <Region HBox.hgrow="ALWAYS"/>
                         <Button text="New task" onAction="#handleAddTask" styleClass="btn-primary">
@@ -351,7 +378,7 @@
                         </Button>
                     </HBox>
 
-                    <HBox spacing="12">
+                    <HBox spacing="0" styleClass="metrics-strip">
                         <VBox styleClass="metric-card" HBox.hgrow="ALWAYS">
                             <HBox spacing="8" alignment="CENTER_LEFT">
                                 <StackPane styleClass="task-metric-chip, task-metric-total">
@@ -382,7 +409,7 @@
                             <Label fx:id="tasksUpcomingCountLabel" text="0" styleClass="metric-value"/>
                             <Label text="to complete" styleClass="metric-caption"/>
                         </VBox>
-                        <VBox styleClass="metric-card" HBox.hgrow="ALWAYS">
+                        <VBox styleClass="metric-card, metric-last" HBox.hgrow="ALWAYS">
                             <HBox spacing="8" alignment="CENTER_LEFT">
                                 <StackPane styleClass="task-metric-chip, task-metric-completed">
                                     <FontIcon iconLiteral="fas-check-circle" iconSize="12"/>
@@ -470,14 +497,14 @@
                                 <ComboBox fx:id="noteFontSizeCombo" promptText="Size" prefWidth="82" styleClass="note-font-control"/>
                                 <ComboBox fx:id="noteFontWeightCombo" promptText="Weight" prefWidth="112" styleClass="note-font-control"/>
                                 <ToggleButton fx:id="noteBoldToggle" text="B" styleClass="markdown-tool, markdown-tool-bold">
-                                    <tooltip><Tooltip text="Make the entire note bold"/></tooltip>
+                                    <tooltip><Tooltip text="Bold editor text; Markdown formatting is unchanged"/></tooltip>
                                 </ToggleButton>
                                 <ToggleButton fx:id="noteItalicToggle" text="I" styleClass="markdown-tool, markdown-tool-italic">
-                                    <tooltip><Tooltip text="Italicize the entire note"/></tooltip>
+                                    <tooltip><Tooltip text="Italic editor text; Markdown formatting is unchanged"/></tooltip>
                                 </ToggleButton>
                                 <Button text="Reset" onAction="#handleResetNoteTypography" styleClass="note-reset-typography"/>
                                 <Region HBox.hgrow="ALWAYS"/>
-                                <Label text="Formatting applies to this note" styleClass="note-toolbar-hint"/>
+                                <Label text="Editor appearance only" styleClass="note-toolbar-hint"/>
                             </HBox>
                             <HBox fx:id="markdownToolbar" visible="false" managed="false" spacing="5" alignment="CENTER_LEFT" styleClass="markdown-toolbar">
                                 <Button text="H" onAction="#handleMarkdownHeading" styleClass="markdown-tool"><tooltip><Tooltip text="Heading"/></tooltip></Button>
@@ -504,9 +531,7 @@
                             </HBox>
                             <StackPane VBox.vgrow="ALWAYS" styleClass="note-editor-body">
                                 <CodeArea fx:id="noteContentArea" wrapText="true" styleClass="note-code-area"/>
-                                <ScrollPane fx:id="notePreviewScroll" visible="false" managed="false" fitToWidth="true" hbarPolicy="NEVER" styleClass="note-preview-scroll">
-                                    <VBox fx:id="notePreviewContent" spacing="8" styleClass="note-preview-content"/>
-                                </ScrollPane>
+                                <StackPane fx:id="notePreviewPane" visible="false" managed="false"/>
                             </StackPane>
                             <Label fx:id="noteEditorStatus" text="Saved automatically" styleClass="save-status"/>
                         </VBox>
@@ -605,7 +630,7 @@
                                 <VBox spacing="5" HBox.hgrow="ALWAYS">
                                     <Label text="Desktop-compatible workspace file" styleClass="settings-card-title"/>
                                     <Label wrapText="true" styleClass="settings-card-copy"
-                                           text="Export or import the same schema-v1 .properties format used by VoidReach Android. Contacts, custom fields, tasks, notes, folders, and preferences are preserved."/>
+                                           text="Keep a copy of your workspace or move it to another device. Your contacts, tasks, notes, folders, and preferences travel together."/>
                                 </VBox>
                             </HBox>
                             <FlowPane hgap="10" vgap="10">
@@ -615,9 +640,17 @@
                                 <Button text="Import data" onAction="#handleSettingsImport" styleClass="btn-secondary, settings-data-button">
                                     <graphic><FontIcon iconLiteral="fas-file-import" iconSize="12" styleClass="toolbar-icon"/></graphic>
                                 </Button>
+                                <Button text="Backups &amp; recovery" onAction="#handleSettingsBackups" styleClass="btn-secondary, settings-data-button"/>
                             </FlowPane>
                             <Label wrapText="true" styleClass="settings-warning"
                                    text="Import replaces the active account workspace after validating the file. Automatic backups keep the previous local state recoverable."/>
+                        </VBox>
+
+                        <Label text="Local protection" styleClass="settings-section-title"/>
+                        <VBox spacing="12" styleClass="settings-card">
+                            <Label text="Your data, under your control" styleClass="settings-card-title"/>
+                            <Label text="Enable optional workspace and backup encryption, or save an offline account recovery key. Exported workspace and ICS files are not encrypted." wrapText="true" styleClass="settings-card-copy"/>
+                            <Button text="Encryption &amp; recovery key" onAction="#handleLocalProtection" styleClass="btn-secondary"/>
                         </VBox>
 
                         <Label text="Cloud synchronization" styleClass="settings-section-title"/>
@@ -628,7 +661,7 @@
                             <VBox spacing="5" HBox.hgrow="ALWAYS">
                                 <Label text="Not enabled" styleClass="settings-card-title"/>
                                 <Label wrapText="true" styleClass="settings-card-copy"
-                                       text="No account or CRM data leaves this device. The storage boundary is ready for a future encrypted synchronization service."/>
+                                       text="Your workspace is saved on this device. Use Export data to make a copy or move your work to another computer."/>
                             </VBox>
                             <Label text="LOCAL ONLY" styleClass="settings-local-badge"/>
                         </HBox>

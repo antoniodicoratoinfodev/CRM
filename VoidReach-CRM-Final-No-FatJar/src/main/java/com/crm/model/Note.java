@@ -25,6 +25,7 @@ public final class Note {
     private double previewFontSize;
     private String previewTextColor;
     private String folderId;
+    private String contactId = "";
 
     public Note(String title, NoteFormat format) {
         this(UUID.randomUUID().toString(), title, "", format, "");
@@ -76,6 +77,8 @@ public final class Note {
     }
 
     public String getId() { return id; }
+    public String getContactId() { return contactId; }
+    public void setContactId(String value) { contactId = safe(value); }
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = safe(title); }
     public String getContent() { return content; }

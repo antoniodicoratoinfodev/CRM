@@ -9,7 +9,7 @@ import javafx.util.Duration;
 
 public class SplashScreenController {
 
-    @FXML private ImageView logoView;
+    @FXML private javafx.scene.Node logoView;
     @FXML private Label statusLabel;
     @FXML private Label percentLabel;
     @FXML private Rectangle progressFill;

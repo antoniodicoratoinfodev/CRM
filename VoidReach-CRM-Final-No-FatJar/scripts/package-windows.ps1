@@ -13,7 +13,15 @@ if (-not (Get-Command jpackage -ErrorAction SilentlyContinue)) {
 }
 
 Set-Location $RootDir
-Remove-Item -Recurse -Force $InputDir, $OutputDir -ErrorAction SilentlyContinue
+# Validate the exact build-output targets before cleaning them; never delete the module root.
+$BuildRoot = [IO.Path]::GetFullPath((Join-Path $RootDir "target"))
+foreach ($BuildOutput in @($InputDir, $OutputDir)) {
+    $ResolvedOutput = [IO.Path]::GetFullPath($BuildOutput)
+    if (-not $ResolvedOutput.StartsWith($BuildRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to clean a path outside target: $ResolvedOutput"
+    }
+    if (Test-Path -LiteralPath $ResolvedOutput) { Remove-Item -LiteralPath $ResolvedOutput -Recurse -Force }
+}
 New-Item -ItemType Directory -Force $InputDir, $OutputDir | Out-Null
 
 mvn -q package "-DskipTests" dependency:copy-dependencies "-DincludeScope=runtime" "-DoutputDirectory=$InputDir"
@@ -30,8 +38,8 @@ jpackage `
   --input $InputDir `
   --main-jar $AppJar `
   --main-class com.crm.app.AppLauncher `
-  --icon (Join-Path $RootDir "src/main/packaging/windows/VoidReach.ico") `
-  --java-options "--enable-native-access=javafx.graphics" `
+  --icon (Join-Path $RootDir "src/main/packaging/windows/VoidReach-v2.ico") `
+  --java-options "--enable-native-access=ALL-UNNAMED" `
   --dest $OutputDir
 if ($LASTEXITCODE -ne 0) { throw "jpackage failed (exit code $LASTEXITCODE)." }
 

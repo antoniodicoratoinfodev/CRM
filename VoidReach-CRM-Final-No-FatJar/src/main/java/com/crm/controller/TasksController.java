@@ -3,6 +3,7 @@ package com.crm.controller;
 import com.crm.model.Task;
 import com.crm.model.Note;
 import com.crm.service.ThemeService;
+import com.crm.service.TaskScheduleService;
 import javafx.collections.FXCollections;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -25,7 +26,7 @@ import javafx.scene.layout.VBox;
 import org.kordamp.ikonli.javafx.FontIcon;
 
 import java.time.LocalDate;
-import java.time.LocalTime;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -57,6 +58,8 @@ public final class TasksController {
     private final ThemeService themeService;
     private final TaskActions actions;
     private final List<DatedTask> tasks = new ArrayList<>();
+    private int page;
+    private static final int PAGE_SIZE = 100;
 
     public TasksController(TextField searchField, ComboBox<String> filter, VBox list, Label emptyLabel,
                            Label totalCount, Label todayCount, Label upcomingCount, Label completedCount,
@@ -74,20 +77,30 @@ public final class TasksController {
     }
 
     public void initialize() {
-        filter.setItems(FXCollections.observableArrayList(ALL, TODAY, UPCOMING, OVERDUE, COMPLETED));
+        filter.setItems(FXCollections.observableArrayList(ALL, TODAY, UPCOMING, OVERDUE, "Unscheduled", "High priority", "In progress", COMPLETED));
         filter.setValue(ALL);
-        searchField.textProperty().addListener((observable, oldValue, newValue) -> render());
-        filter.valueProperty().addListener((observable, oldValue, newValue) -> render());
+        searchField.textProperty().addListener((observable, oldValue, newValue) -> { page = 0; render(); });
+        filter.valueProperty().addListener((observable, oldValue, newValue) -> { page = 0; render(); });
         emptyLabel.managedProperty().bind(emptyLabel.visibleProperty());
         render();
     }
 
     public void refresh(Map<LocalDate, List<Task>> tasksByDate) {
         tasks.clear();
-        if (tasksByDate != null) tasksByDate.forEach((date, datedTasks) ->
-                datedTasks.forEach(task -> tasks.add(new DatedTask(date, task))));
-        tasks.sort(Comparator.comparing(DatedTask::date)
+        if (tasksByDate != null) TaskScheduleService.listedTasks(tasksByDate, LocalDate.now()).forEach(entry -> tasks.add(new DatedTask(entry.date(), entry.task())));
+        tasks.sort(Comparator.comparing(this::displayDate)
                 .thenComparingInt(entry -> entry.task().getStartMin()));
+        updateMetrics();
+        render();
+    }
+
+    public void showAttention(boolean hasOverdueTasks) {
+        searchField.clear();
+        filter.setValue(hasOverdueTasks ? OVERDUE : TODAY);
+        render();
+    }
+
+    public void refreshClock() {
         updateMetrics();
         render();
     }
@@ -96,10 +109,10 @@ public final class TasksController {
         LocalDate today = LocalDate.now();
         totalCount.setText(String.valueOf(tasks.size()));
         todayCount.setText(String.valueOf(tasks.stream()
-                .filter(entry -> entry.date().equals(today) && !entry.task().isCompleted()).count()));
+                .filter(entry -> displayDate(entry).equals(today) && !entry.task().isCompleted()).count()));
         upcomingCount.setText(String.valueOf(tasks.stream()
                 .filter(entry -> !entry.task().isCompleted()
-                        && !entry.date().isBefore(today) && !entry.date().isAfter(today.plusDays(6))).count()));
+                        && !displayDate(entry).isBefore(today) && !displayDate(entry).isAfter(today.plusDays(6))).count()));
         completedCount.setText(String.valueOf(tasks.stream().filter(entry -> entry.task().isCompleted()).count()));
     }
 
@@ -107,19 +120,22 @@ public final class TasksController {
         list.getChildren().clear();
         String query = safe(searchField.getText()).trim().toLowerCase(Locale.ROOT);
         String selectedFilter = filter.getValue() == null ? ALL : filter.getValue();
-        List<DatedTask> visibleTasks = tasks.stream()
+        List<DatedTask> matchingTasks = tasks.stream()
                 .filter(entry -> matchesFilter(entry, selectedFilter))
                 .filter(entry -> query.isEmpty()
                         || safe(entry.task().getTitle()).toLowerCase(Locale.ROOT).contains(query)
                         || safe(entry.task().getDescription()).toLowerCase(Locale.ROOT).contains(query))
                 .toList();
+        page = Math.max(0, Math.min(page, (matchingTasks.size() - 1) / PAGE_SIZE));
+        List<DatedTask> visibleTasks = matchingTasks.stream().skip((long)page * PAGE_SIZE).limit(PAGE_SIZE).toList();
+        Map<LocalDate, Long> dayCounts = matchingTasks.stream().collect(java.util.stream.Collectors.groupingBy(this::displayDate, java.util.stream.Collectors.counting()));
 
         LocalDate currentDate = null;
         for (DatedTask entry : visibleTasks) {
-            if (!entry.date().equals(currentDate)) {
-                currentDate = entry.date();
+            if (!displayDate(entry).equals(currentDate)) {
+                currentDate = displayDate(entry);
                 LocalDate headerDate = currentDate;
-                long dayCount = visibleTasks.stream().filter(it -> it.date().equals(headerDate)).count();
+                long dayCount = dayCounts.getOrDefault(headerDate, 0L);
                 list.getChildren().add(dateHeader(headerDate, dayCount));
             }
             list.getChildren().add(taskRow(entry));
@@ -128,15 +144,23 @@ public final class TasksController {
                 ? "There are no tasks yet. Create one to get started."
                 : "No tasks match the selected filters.");
         emptyLabel.setVisible(visibleTasks.isEmpty());
+        if (matchingTasks.size() > PAGE_SIZE) {
+            Button previous = new Button("Previous"); previous.setDisable(page == 0); previous.setOnAction(e -> { page--; render(); });
+            Button next = new Button("Next"); next.setDisable((page + 1) * PAGE_SIZE >= matchingTasks.size()); next.setOnAction(e -> { page++; render(); });
+            list.getChildren().add(new HBox(12, previous, new Label((page * PAGE_SIZE + 1) + "–" + Math.min((page + 1) * PAGE_SIZE, matchingTasks.size()) + " of " + matchingTasks.size()), next));
+        }
     }
 
     private boolean matchesFilter(DatedTask entry, String selectedFilter) {
         LocalDate today = LocalDate.now();
         return switch (selectedFilter) {
-            case TODAY -> entry.date().equals(today);
-            case UPCOMING -> !entry.task().isCompleted() && !entry.date().isBefore(today);
-            case OVERDUE -> !entry.task().isCompleted() && isOverdue(entry, today);
+            case TODAY -> displayDate(entry).equals(today);
+            case UPCOMING -> !entry.task().isCompleted() && !displayDate(entry).equals(LocalDate.MAX) && !displayDate(entry).isBefore(today);
+            case OVERDUE -> isOverdue(entry);
             case COMPLETED -> entry.task().isCompleted();
+            case "Unscheduled" -> !entry.task().isScheduled() && !entry.task().isCompleted();
+            case "High priority" -> entry.task().getPriority().ordinal() >= Task.Priority.HIGH.ordinal() && !entry.task().isCompleted();
+            case "In progress" -> entry.task().getStatus() == Task.Status.IN_PROGRESS;
             default -> true;
         };
     }
@@ -161,6 +185,9 @@ public final class TasksController {
         title.setTextOverrun(OverrunStyle.ELLIPSIS);
         title.getStyleClass().add("task-list-title");
         VBox details = new VBox(4, title);
+        if (task.getPriority() != Task.Priority.NORMAL) {
+            Label priority = new Label(task.getPriority() + " priority"); priority.getStyleClass().add("task-list-description"); details.getChildren().add(priority);
+        }
         details.setAlignment(Pos.CENTER_LEFT);
         details.setMinWidth(0);
         HBox.setHgrow(details, Priority.ALWAYS);
@@ -255,6 +282,7 @@ public final class TasksController {
     }
 
     private String headerTitle(LocalDate date, LocalDate today) {
+        if (date.equals(LocalDate.MAX)) return "Backlog · no deadline";
         if (date.equals(today)) return "Today";
         if (date.equals(today.plusDays(1))) return "Tomorrow";
         if (date.equals(today.minusDays(1))) return "Yesterday";
@@ -293,28 +321,30 @@ public final class TasksController {
         }
     }
 
-    private boolean isOverdue(DatedTask entry, LocalDate today) {
-        if (entry.date().isBefore(today)) return true;
-        if (entry.date().isAfter(today)) return false;
-        return entry.task().getStartMin() + entry.task().getDuration()
-                < LocalTime.now().getHour() * 60 + LocalTime.now().getMinute();
+    private boolean isOverdue(DatedTask entry) {
+        return TaskScheduleService.isOverdue(entry.date(), entry.task(), LocalDateTime.now());
     }
 
     private String status(DatedTask entry) {
         if (entry.task().isCompleted()) return "Completed";
-        if (isOverdue(entry, LocalDate.now())) return "Overdue";
+        if (isOverdue(entry)) return "Overdue";
+        if (entry.task().getStatus() == Task.Status.IN_PROGRESS) return "In progress";
+        if (!entry.task().isScheduled()) return "To do";
         if (entry.date().equals(LocalDate.now())) return "Today";
         return "Scheduled";
     }
 
     private String statusClass(DatedTask entry) {
         if (entry.task().isCompleted()) return "task-status-completed";
-        if (isOverdue(entry, LocalDate.now())) return "task-status-overdue";
+        if (isOverdue(entry)) return "task-status-overdue";
         if (entry.date().equals(LocalDate.now())) return "task-status-today";
         return "task-status-planned";
     }
 
     private String timeRange(Task task) {
+        if (!task.isScheduled()) return task.getDueDate() == null ? "No deadline" : "Due " + task.getDueDate().format(DateTimeFormatter.ofPattern("d MMM"));
+        if (task.isAllDay()) return "All day";
+        if (task.getStartMin() + task.getDuration() > 1440) return task.getDuration() / 60 + " h · multi-day";
         int end = task.getStartMin() + task.getDuration();
         return String.format("%02d:%02d – %02d:%02d", task.getStartMin() / 60,
                 task.getStartMin() % 60, end / 60, end % 60);
@@ -333,6 +363,9 @@ public final class TasksController {
     }
 
     private String safe(String value) { return value == null ? "" : value; }
+    private LocalDate displayDate(DatedTask entry) {
+        return entry.task().isScheduled() ? entry.date() : Objects.requireNonNullElse(entry.task().getDueDate(), LocalDate.MAX);
+    }
 
     private record DatedTask(LocalDate date, Task task) { }
 

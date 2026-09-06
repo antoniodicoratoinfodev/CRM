@@ -3,6 +3,13 @@ package com.crm.controller;
 import com.crm.model.Contact;
 import com.crm.model.Task;
 import com.crm.model.UserAccount;
+import com.crm.service.TaskScheduleService;
+import com.crm.service.CalendarOccurrenceService;
+import com.crm.service.WorkspaceInsightsService;
+import com.crm.model.CalendarPreferences;
+import javafx.scene.AccessibleRole;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.MouseButton;
 import javafx.collections.FXCollections;
 import javafx.scene.chart.BarChart;
 import javafx.scene.chart.PieChart;
@@ -14,7 +21,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
 import java.time.LocalDate;
-import java.time.LocalTime;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
 import java.util.ArrayList;
@@ -24,6 +31,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 /** Renders read-only operational and analytical summaries from the existing CRM data. */
 public final class OverviewController {
@@ -49,6 +58,19 @@ public final class OverviewController {
     private final VBox dashboardInteractionsList;
 
     private UserAccount user;
+    private BiConsumer<LocalDate, Task> openTask = (date, task) -> { };
+    private Consumer<Contact> openContact = contact -> { };
+    private VBox insights;
+    private Consumer<LocalDate> openDay = date -> { };
+    private java.util.function.Supplier<CalendarPreferences> preferences = () -> CalendarPreferences.DEFAULT;
+    public void attachInsights(VBox container, Consumer<LocalDate> openDay, java.util.function.Supplier<CalendarPreferences> preferences) {
+        this.openDay = openDay; this.preferences = preferences;
+        insights = new VBox(10); insights.getStyleClass().add("overview-card");
+        container.getChildren().add(Math.min(2, container.getChildren().size()), insights);
+        dashboardTagsChart.setMinHeight(230); dashboardTagsChart.setPrefHeight(270); dashboardTagsChart.setMaxHeight(300);
+        dashboardActivityChart.setMinHeight(230); dashboardActivityChart.setPrefHeight(270); dashboardActivityChart.setMaxHeight(300);
+        dashboardActivityChart.getYAxis().setLabel("Hours");
+    }
 
     public OverviewController(Label homeGreeting, Label homeDate,
                               Label homeContactsCount, Label homeTodayCount, Label homeWeekCount,
@@ -84,6 +106,11 @@ public final class OverviewController {
         this.user = user;
     }
 
+    public void setActions(BiConsumer<LocalDate, Task> openTask, Consumer<Contact> openContact) {
+        this.openTask = Objects.requireNonNull(openTask);
+        this.openContact = Objects.requireNonNull(openContact);
+    }
+
     public void refresh(List<Contact> contacts, Map<LocalDate, List<Task>> tasksByDate) {
         List<Contact> safeContacts = contacts == null ? List.of() : contacts;
         Map<LocalDate, List<Task>> safeTasks = tasksByDate == null ? Map.of() : tasksByDate;
@@ -93,18 +120,32 @@ public final class OverviewController {
         homeGreeting.setText(firstName.isBlank() ? "Welcome back" : "Welcome back, " + firstName);
         homeDate.setText(capitalize(today.format(FULL_DATE)));
 
-        List<Task> todayTasks = sortedTasks(safeTasks.getOrDefault(today, List.of()));
-        int weekCount = countBetween(safeTasks, today, today.plusDays(6));
+        var occurrences = CalendarOccurrenceService.between(safeTasks, today, today.plusDays(6));
+        List<DatedTask> todayItems = new ArrayList<>();
+        Map<LocalDate, List<Task>> weekTasks = new LinkedHashMap<>();
+        occurrences.forEach(entry -> {
+            weekTasks.computeIfAbsent(entry.date(), ignored -> new ArrayList<>()).add(entry.task());
+            if (entry.start().isBefore(today.plusDays(1).atStartOfDay()) && entry.end().isAfter(today.atStartOfDay())) todayItems.add(new DatedTask(entry.date(), entry.task()));
+        });
+        safeTasks.forEach((date, entries) -> entries.stream().filter(task -> !task.isScheduled() && task.getDueDate() != null).forEach(task -> {
+            if (!task.getDueDate().isBefore(today) && !task.getDueDate().isAfter(today.plusDays(6))) weekTasks.computeIfAbsent(task.getDueDate(), ignored -> new ArrayList<>()).add(task);
+            if (task.getDueDate().equals(today)) todayItems.add(new DatedTask(date, task));
+        }));
+        List<Task> todayTasks = todayItems.stream().map(DatedTask::task).toList();
+        int weekCount = weekTasks.values().stream().mapToInt(List::size).sum();
         homeContactsCount.setText(String.valueOf(safeContacts.size()));
-        homeTodayCount.setText(String.valueOf(todayTasks.size()));
-        homeWeekCount.setText(String.valueOf(weekCount));
-        updateNextActivity(todayTasks);
-        renderTaskList(homeTodayList, todayTasks, false, "No tasks scheduled for today.");
-        renderUpcoming(homeUpcomingList, safeTasks, today);
+        homeTodayCount.setText(String.valueOf(todayTasks.stream().filter(task -> !task.isCompleted()).count()));
+        homeWeekCount.setText(String.valueOf(TaskScheduleService.openTasks(weekTasks).stream()
+                .filter(entry -> !entry.date().isBefore(today) && !entry.date().isAfter(today.plusDays(6))).count()));
+        updateNextActivity(safeTasks);
+        homeTodayList.getChildren().clear();
+        if (todayItems.isEmpty()) homeTodayList.getChildren().add(emptyState("No appointments or deadlines today."));
+        todayItems.stream().limit(5).forEach(entry -> homeTodayList.getChildren().add(taskRow(entry.date(), entry.task(), false)));
+        renderUpcoming(homeUpcomingList, weekTasks, today);
         renderContacts(homeContactsList, safeContacts);
 
         List<Task> allTasks = safeTasks.values().stream().flatMap(List::stream).toList();
-        long totalMinutes = allTasks.stream().mapToLong(Task::getDuration).sum();
+        long totalMinutes = WorkspaceInsightsService.workload(safeTasks, today, preferences.get()).stream().mapToLong(WorkspaceInsightsService.DayLoad::minutes).sum();
         dashboardContactsCount.setText(String.valueOf(safeContacts.size()));
         dashboardActivitiesCount.setText(String.valueOf(allTasks.size()));
         dashboardWeekCount.setText(String.valueOf(weekCount));
@@ -112,21 +153,22 @@ public final class OverviewController {
         updateTagsChart(safeContacts);
         updateActivityChart(safeTasks, today);
         renderInteractions(dashboardInteractionsList, safeContacts);
+        renderInsights(safeTasks, safeContacts, today);
     }
 
-    private void updateNextActivity(List<Task> todayTasks) {
-        int now = LocalTime.now().getHour() * 60 + LocalTime.now().getMinute();
-        Task next = todayTasks.stream()
-                .filter(task -> task.getStartMin() + task.getDuration() >= now)
-                .findFirst()
-                .orElse(null);
+    private void updateNextActivity(Map<LocalDate, List<Task>> tasks) {
+        LocalDateTime now = LocalDateTime.now();
+        TaskScheduleService.DatedTask next = TaskScheduleService.nextTask(tasks, now).orElse(null);
         if (next == null) {
-            homeNextTitle.setText("No more tasks today");
-            homeNextTime.setText("Your day is clear");
+            homeNextTitle.setText("Nothing scheduled");
+            homeNextTime.setText("Make room for your next step");
             return;
         }
-        homeNextTitle.setText(nonBlank(next.getTitle(), "Untitled task"));
-        homeNextTime.setText(timeRange(next));
+        homeNextTitle.setText(nonBlank(next.task().getTitle(), "Untitled task"));
+        String day = next.date().equals(now.toLocalDate()) ? "Today"
+                : next.date().equals(now.toLocalDate().plusDays(1)) ? "Tomorrow"
+                : next.date().format(DateTimeFormatter.ofPattern("MMM d", ENGLISH));
+        homeNextTime.setText(day + " · " + timeRange(next.task()));
     }
 
     private void renderTaskList(VBox target, List<Task> tasks, boolean showDate, String emptyText) {
@@ -142,8 +184,9 @@ public final class OverviewController {
         target.getChildren().clear();
         List<DatedTask> upcoming = new ArrayList<>();
         tasksByDate.forEach((date, tasks) -> {
-            if (date.isAfter(today) && !date.isAfter(today.plusDays(7))) {
-                tasks.forEach(task -> upcoming.add(new DatedTask(date, task)));
+            if (date.isAfter(today) && !date.isAfter(today.plusDays(6))) {
+                tasks.stream().filter(task -> !task.isCompleted())
+                        .forEach(task -> upcoming.add(new DatedTask(date, task)));
             }
         });
         upcoming.sort(Comparator.comparing(DatedTask::date).thenComparing(entry -> entry.task().getStartMin()));
@@ -159,6 +202,8 @@ public final class OverviewController {
         Label marker = new Label();
         marker.getStyleClass().addAll("overview-marker", "marker-" + safeColor(task.getColor()));
         VBox text = new VBox(3);
+        text.setMinWidth(0);
+        HBox.setHgrow(text, Priority.ALWAYS);
         Label title = new Label(nonBlank(task.getTitle(), "Untitled task"));
         title.getStyleClass().add("overview-item-title");
         String detail = showDate && date != null
@@ -170,33 +215,39 @@ public final class OverviewController {
         text.getChildren().addAll(title, subtitle);
         HBox row = new HBox(11, marker, text);
         row.getStyleClass().add("overview-list-row");
+        if (task.isCompleted()) row.getStyleClass().add("overview-row-completed");
+        makeActionable(row, "Open task: " + title.getText(),
+                () -> openTask.accept(date == null ? LocalDate.now() : date, task));
         return row;
     }
 
     private void renderContacts(VBox target, List<Contact> contacts) {
         target.getChildren().clear();
-        List<Contact> sorted = contacts.stream()
-                .sorted(Comparator.comparing(contact -> value(contact.nameProperty().get()), String.CASE_INSENSITIVE_ORDER))
+        List<Contact> sorted = WorkspaceInsightsService.reconnect(contacts, LocalDate.now()).stream()
                 .limit(5)
                 .toList();
         if (sorted.isEmpty()) {
-            target.getChildren().add(emptyState("Your address book is still empty."));
+            target.getChildren().add(emptyState(contacts.isEmpty() ? "Your address book is still empty." : "Your contacts have recent dated interactions."));
             return;
         }
-        sorted.forEach(contact -> target.getChildren().add(contactRow(contact, false)));
+        sorted.forEach(contact -> target.getChildren().add(contactRow(contact, true)));
     }
 
     private void renderInteractions(VBox target, List<Contact> contacts) {
         target.getChildren().clear();
-        List<Contact> interactions = contacts.stream()
-                .filter(contact -> !value(contact.lastInteractionProperty().get()).isBlank())
-                .limit(6)
-                .toList();
+        record InteractionRow(Contact contact, com.crm.model.ContactInteraction interaction) { }
+        var interactions = contacts.stream().flatMap(contact -> contact.getInteractions().stream().map(item -> new InteractionRow(contact, item)))
+                .sorted(Comparator.comparing((InteractionRow item) -> item.interaction().date()).reversed()).limit(6).toList();
         if (interactions.isEmpty()) {
             target.getChildren().add(emptyState("No interactions recorded."));
             return;
         }
-        interactions.forEach(contact -> target.getChildren().add(contactRow(contact, true)));
+        interactions.forEach(item -> {
+            Label heading = new Label(item.contact().nameProperty().get() + " · " + item.interaction().kind()); heading.getStyleClass().add("overview-item-title");
+            Label detail = new Label(item.interaction().date() + " · " + item.interaction().summary()); detail.setWrapText(true); detail.getStyleClass().add("overview-item-subtitle");
+            HBox row = new HBox(new VBox(4, heading, detail)); row.getStyleClass().add("overview-list-row");
+            makeActionable(row, "Open contact " + item.contact().nameProperty().get(), () -> openContact.accept(item.contact())); target.getChildren().add(row);
+        });
     }
 
     private HBox contactRow(Contact contact, boolean showInteraction) {
@@ -204,10 +255,12 @@ public final class OverviewController {
         Label initial = new Label(name.substring(0, 1).toUpperCase(ENGLISH));
         initial.getStyleClass().add("contact-initial");
         VBox text = new VBox(3);
+        text.setMinWidth(0);
+        HBox.setHgrow(text, Priority.ALWAYS);
         Label title = new Label(name);
         title.getStyleClass().add("overview-item-title");
         String secondary = showInteraction
-                ? nonBlank(contact.lastInteractionProperty().get(), "No interaction")
+                ? WorkspaceInsightsService.lastContact(contact).map(date -> "Last contact: " + date).orElse("No dated interaction yet")
                 : nonBlank(contact.companyProperty().get(), nonBlank(contact.emailProperty().get(), "No details"));
         Label subtitle = new Label(secondary);
         subtitle.getStyleClass().add("overview-item-subtitle");
@@ -218,7 +271,23 @@ public final class OverviewController {
         tag.getStyleClass().add("overview-tag");
         HBox row = new HBox(11, initial, text, spacer, tag);
         row.getStyleClass().add("overview-list-row");
+        makeActionable(row, "Open contact: " + name, () -> openContact.accept(contact));
         return row;
+    }
+
+    private static void makeActionable(HBox row, String description, Runnable action) {
+        row.setFocusTraversable(true);
+        row.setAccessibleRole(AccessibleRole.BUTTON);
+        row.setAccessibleText(description);
+        row.setOnMouseClicked(event -> {
+            if (event.getButton() == MouseButton.PRIMARY) action.run();
+        });
+        row.setOnKeyPressed(event -> {
+            if (event.getCode() == KeyCode.ENTER || event.getCode() == KeyCode.SPACE) {
+                action.run();
+                event.consume();
+            }
+        });
     }
 
     private void updateTagsChart(List<Contact> contacts) {
@@ -235,11 +304,12 @@ public final class OverviewController {
 
     private void updateActivityChart(Map<LocalDate, List<Task>> tasksByDate, LocalDate today) {
         XYChart.Series<String, Number> series = new XYChart.Series<>();
-        series.setName("Tasks");
+        series.setName("Planned hours");
+        var workload = WorkspaceInsightsService.workload(tasksByDate, today, preferences.get());
         for (int offset = 0; offset < 7; offset++) {
             LocalDate date = today.plusDays(offset);
             String day = capitalize(date.getDayOfWeek().getDisplayName(TextStyle.SHORT, ENGLISH));
-            series.getData().add(new XYChart.Data<>(day, tasksByDate.getOrDefault(date, List.of()).size()));
+            series.getData().add(new XYChart.Data<>(day, workload.get(offset).minutes() / 60.0));
         }
         dashboardActivityChart.getData().setAll(series);
     }
@@ -263,6 +333,9 @@ public final class OverviewController {
     }
 
     private static String timeRange(Task task) {
+        if (!task.isScheduled()) return task.getDueDate() == null ? "No deadline" : "Due " + task.getDueDate();
+        if (task.isAllDay()) return "All day";
+        if (task.getStartMin() + task.getDuration() > 1440) return "Multi-day · " + formatHours(task.getDuration());
         int end = task.getStartMin() + task.getDuration();
         return String.format("%02d:%02d – %02d:%02d",
                 task.getStartMin() / 60, task.getStartMin() % 60, end / 60, end % 60);
@@ -272,6 +345,23 @@ public final class OverviewController {
         long hours = minutes / 60;
         long remainder = minutes % 60;
         return remainder == 0 ? hours + " h" : hours + " h " + remainder + " m";
+    }
+    private void renderInsights(Map<LocalDate, List<Task>> tasks, List<Contact> contacts, LocalDate today) {
+        if (insights == null) return;
+        insights.getChildren().clear(); Label heading = new Label("Needs attention"); heading.getStyleClass().add("overview-card-title"); insights.getChildren().add(heading);
+        var listed = TaskScheduleService.listedTasks(tasks, today);
+        long unplanned = listed.stream().filter(entry -> !entry.task().isScheduled() && !entry.task().isCompleted()).count();
+        long priority = listed.stream().filter(entry -> !entry.task().isCompleted() && entry.task().getPriority().ordinal() >= Task.Priority.HIGH.ordinal()).count();
+        Label summary = new Label(TaskScheduleService.overdueCount(tasks, LocalDateTime.now()) + " overdue · " + priority + " high priority · " + unplanned + " to plan · "
+                + WorkspaceInsightsService.reconnect(contacts, today).size() + " contacts to reconnect"); summary.setWrapText(true); summary.getStyleClass().add("section-subtitle"); insights.getChildren().add(summary);
+        listed.stream().filter(entry -> !entry.task().isCompleted() && (TaskScheduleService.isOverdue(entry.date(), entry.task(), LocalDateTime.now())
+                        || entry.task().getPriority().ordinal() >= Task.Priority.HIGH.ordinal()))
+                .sorted(Comparator.comparingInt((TaskScheduleService.DatedTask entry) -> entry.task().getPriority().ordinal()).reversed())
+                .limit(3).forEach(entry -> insights.getChildren().add(taskRow(entry.date(), entry.task(), true)));
+        WorkspaceInsightsService.workload(tasks, today, preferences.get()).stream().filter(WorkspaceInsightsService.DayLoad::overloaded).forEach(load -> {
+            javafx.scene.control.Button button = new javafx.scene.control.Button(load.date().format(DateTimeFormatter.ofPattern("EEE d MMM")) + ": " + formatHours(load.minutes()) + " planned — review this day");
+            button.getStyleClass().add("text-button"); button.setWrapText(true); button.setOnAction(event -> openDay.accept(load.date())); insights.getChildren().add(button);
+        });
     }
 
     private static String firstName(String fullName) {

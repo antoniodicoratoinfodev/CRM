@@ -19,6 +19,20 @@ import org.junit.jupiter.api.io.TempDir;
 class LocalUserRepositoryTest {
     @TempDir Path directory;
 
+    @Test void iconChoiceIsPerAccountAndLegacyRecordsStayReadable() throws Exception {
+        LocalUserRepository repository = new LocalUserRepository(directory);
+        UserAccount book = account("book", "book@example.test", "Book User"); book.setPreferredIcon("BOOK");
+        UserAccount modern = account("modern", "modern@example.test", "Modern User");
+        repository.save(book); repository.save(modern);
+        assertEquals("BOOK", repository.findByEmail(book.getEmail()).orElseThrow().getPreferredIcon());
+        assertEquals("V", repository.findByEmail(modern.getEmail()).orElseThrow().getPreferredIcon());
+        assertEquals("BOOK", new UserAccount(book).getPreferredIcon());
+        Path file = directory.resolve("users.properties"); Properties stored = load(file);
+        stored.remove("user.book.preferredIcon"); storeDirectly(file, stored);
+        assertEquals("V", repository.findByEmail(book.getEmail()).orElseThrow().getPreferredIcon());
+        book.setPreferredIcon("unknown"); assertEquals("V", book.getPreferredIcon());
+    }
+
     @Test void corruptAccountDoesNotBlockValidAccountsAndIsQuarantined() throws Exception {
         LocalUserRepository repository = new LocalUserRepository(directory);
         UserAccount corrupt = account("corrupt-id", "corrupt@example.com", "Corrupt User");

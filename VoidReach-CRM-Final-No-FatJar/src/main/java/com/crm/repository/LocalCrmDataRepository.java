@@ -6,6 +6,9 @@ import com.crm.model.Note;
 import com.crm.model.NoteFolder;
 import com.crm.model.NoteFormat;
 import com.crm.model.Task;
+import com.crm.model.CrmTrash;
+import com.crm.model.ContactInteraction;
+import com.crm.service.WorkspaceVaultService;
 import com.crm.repository.CorruptRecordQuarantine.RejectedRecord;
 import java.io.IOException;
 import java.io.InputStream;
@@ -26,7 +29,7 @@ import java.util.TreeSet;
 
 /** One file per user: local equivalent of owner_user_id filtering in SQL. */
 public class LocalCrmDataRepository implements CrmDataRepository {
-    private static final int SCHEMA_VERSION = 1;
+    private static final int SCHEMA_VERSION = 2;
     private static final int MAX_RECORDS = 100_000;
     private static final String FILE_TYPE = "voidreach.crm-data";
     // Owner stamp added to portable exports (not to the per-account on-disk file). Both the desktop
@@ -40,15 +43,19 @@ public class LocalCrmDataRepository implements CrmDataRepository {
 
     @Override public synchronized CrmDataSnapshot loadForUser(String userId) {
         Path file = dataFile(userId);
-        Properties properties = load(file);
+        Properties properties = WorkspaceVaultService.unseal(load(file), userId);
         List<RejectedRecord> rejected = new ArrayList<>();
         CrmDataSnapshot snapshot = deserialize(properties, rejected);
-        CorruptRecordQuarantine.writeBestEffort(file, rejected);
+        CorruptRecordQuarantine.writeBestEffort(file, rejected, userId);
         return snapshot;
     }
 
     /** Parses an already-loaded property set into a snapshot, collecting rejects (writes no files). */
     private CrmDataSnapshot deserialize(Properties properties, List<RejectedRecord> rejected) {
+        return deserialize(properties, rejected, true);
+    }
+
+    private CrmDataSnapshot deserialize(Properties properties, List<RejectedRecord> rejected, boolean includeTrash) {
         List<Contact> contacts = new ArrayList<>();
         Map<LocalDate, List<Task>> tasks = new HashMap<>();
         List<Note> notes = new ArrayList<>();
@@ -69,14 +76,19 @@ public class LocalCrmDataRepository implements CrmDataRepository {
             String prefix = "task." + index + ".";
             try {
                 LocalDate date = LocalDate.parse(requiredValue(properties, prefix + "date"));
-                Task task = new Task(
+                Map<String, String> metadata = readMetadata(properties, prefix);
+                boolean extended = Boolean.parseBoolean(metadata.getOrDefault("extendedSchedule", "false"));
+                int start = requiredInteger(properties, prefix + "startMin");
+                int duration = requiredInteger(properties, prefix + "duration");
+                if (!extended) Task.validateSchedule(start, duration);
+                Task task = Task.scheduled(
                         requiredNonBlank(properties, prefix + "id"),
                         requiredValue(properties, prefix + "title"),
                         optionalValue(properties, prefix + "description", ""),
-                        requiredInteger(properties, prefix + "startMin"),
-                        requiredInteger(properties, prefix + "duration"),
+                        start, duration,
                         optionalValue(properties, prefix + "color", "Blue"),
                         Boolean.parseBoolean(optionalValue(properties, prefix + "completed", "false")));
+                task.applyMetadata(metadata);
                 tasks.computeIfAbsent(date, ignored -> new ArrayList<>()).add(task);
             } catch (RuntimeException failure) {
                 rejected.add(CorruptRecordQuarantine.capture(properties, "task", String.valueOf(index), prefix, failure));
@@ -98,7 +110,7 @@ public class LocalCrmDataRepository implements CrmDataRepository {
         for (int index : recordIndexes(properties, "note.", "notes.count", rejected)) {
             String prefix = "note." + index + ".";
             try {
-                notes.add(new Note(
+                Note note = new Note(
                         requiredNonBlank(properties, prefix + "id"),
                         optionalValue(properties, prefix + "title", ""),
                         optionalValue(properties, prefix + "content", ""),
@@ -111,7 +123,9 @@ public class LocalCrmDataRepository implements CrmDataRepository {
                         optionalValue(properties, prefix + "previewFontFamily", Note.DEFAULT_PREVIEW_FONT_FAMILY),
                         optionalDouble(properties, prefix + "previewFontSize", Note.DEFAULT_PREVIEW_FONT_SIZE),
                         optionalValue(properties, prefix + "previewTextColor", ""),
-                        optionalValue(properties, prefix + "folderId", "")));
+                        optionalValue(properties, prefix + "folderId", ""));
+                note.setContactId(optionalValue(properties, prefix + "contactId", ""));
+                notes.add(note);
             } catch (RuntimeException failure) {
                 rejected.add(CorruptRecordQuarantine.capture(properties, "note", String.valueOf(index), prefix, failure));
             }
@@ -119,7 +133,7 @@ public class LocalCrmDataRepository implements CrmDataRepository {
 
         LocalDate selectedDate = preference(properties, "calendar.selectedDate", LocalDate.now(), LocalDate::parse, rejected);
         String viewMode = preference(properties, "calendar.viewMode", "Day", value -> {
-            if (!"Day".equals(value) && !"Week".equals(value)) throw new IllegalArgumentException("Invalid calendar view mode");
+            if (!List.of("Day", "Week", "Month", "Agenda").contains(value)) throw new IllegalArgumentException("Invalid calendar view mode");
             return value;
         }, rejected);
         double zoom = preference(properties, "calendar.zoom", 1.0, value -> {
@@ -133,8 +147,16 @@ public class LocalCrmDataRepository implements CrmDataRepository {
             return Boolean.parseBoolean(value);
         }, rejected);
 
+        CrmTrash trash = CrmTrash.EMPTY;
+        if (includeTrash && properties.containsKey("trash.contacts.count")) {
+            Properties archived = new Properties();
+            properties.stringPropertyNames().stream().filter(key -> key.startsWith("trash."))
+                    .forEach(key -> archived.setProperty(key.substring(6), properties.getProperty(key)));
+            CrmDataSnapshot deleted = deserialize(archived, rejected, false);
+            trash = new CrmTrash(deleted.contacts(), deleted.tasksByDate(), deleted.notes());
+        }
         return new CrmDataSnapshot(contacts, tasks, notes, noteFolders, selectedDate, viewMode, zoom,
-                customFields, quickEdit);
+                customFields, quickEdit, readMetadata(properties, "workspace."), trash);
     }
 
     private List<String> readContactCustomFields(Properties properties, List<RejectedRecord> rejected) {
@@ -152,11 +174,17 @@ public class LocalCrmDataRepository implements CrmDataRepository {
     }
 
     @Override public synchronized void saveForUser(String userId, CrmDataSnapshot data) {
-        writeSnapshot(dataFile(userId), data, "VoidReach CRM data for one account");
+        Path target = dataFile(userId);
+        if (Files.isRegularFile(target) && WorkspaceVaultService.encrypted(load(target))) WorkspaceVaultService.markEnabled(userId);
+        writeSnapshot(target, data, "VoidReach CRM data for one account", userId);
     }
 
     synchronized void writeSnapshot(Path target, CrmDataSnapshot data, String comment) {
-        Properties properties = serialize(data);
+        writeSnapshot(target, data, comment, null);
+    }
+
+    synchronized void writeSnapshot(Path target, CrmDataSnapshot data, String comment, String userId) {
+        Properties properties = userId == null ? serialize(data) : WorkspaceVaultService.seal(serialize(data), userId);
         try {
             AtomicPropertiesStore.store(target, properties, comment);
         } catch (IOException e) {
@@ -170,8 +198,8 @@ public class LocalCrmDataRepository implements CrmDataRepository {
             put(properties, OWNER_EMAIL_KEY, owner.email());
             put(properties, OWNER_NAME_KEY, owner.name());
         }
-        try (OutputStream output = Files.newOutputStream(target)) {
-            properties.store(output, "VoidReach CRM portable data for one account");
+        try {
+            AtomicPropertiesStore.store(target.toAbsolutePath(), properties, "VoidReach CRM portable data (not encrypted)");
         } catch (IOException e) {
             throw new IllegalStateException("Data could not be exported", e);
         }
@@ -184,12 +212,14 @@ public class LocalCrmDataRepository implements CrmDataRepository {
         } catch (IOException e) {
             throw new IllegalStateException("The selected file could not be read", e);
         }
+        properties = WorkspaceVaultService.unseal(properties, null);
         validateImport(properties);
         String email = ownerStamp(properties, OWNER_EMAIL_KEY);
         ExportOwner owner = email == null ? null
                 : new ExportOwner(email, Objects.requireNonNullElse(ownerStamp(properties, OWNER_NAME_KEY), ""));
-        CrmDataSnapshot snapshot = deserialize(properties, new ArrayList<>());
-        return new ImportedWorkspace(owner, snapshot);
+        List<RejectedRecord> rejected = new ArrayList<>();
+        CrmDataSnapshot snapshot = deserialize(properties, rejected);
+        return new ImportedWorkspace(owner, snapshot, rejected.stream().map(record -> record.kind() + " " + record.identifier() + ": " + record.reason()).toList());
     }
 
     private void validateImport(Properties properties) {
@@ -247,6 +277,13 @@ public class LocalCrmDataRepository implements CrmDataRepository {
             put(properties, prefix + "lastInteraction", contact.lastInteractionProperty().get());
             put(properties, prefix + "tags", contact.tagsProperty().get());
             put(properties, prefix + "description", contact.descriptionProperty().get());
+            properties.setProperty(prefix + "interactions.count", String.valueOf(contact.getInteractions().size()));
+            for (int j = 0; j < contact.getInteractions().size(); j++) {
+                ContactInteraction interaction = contact.getInteractions().get(j);
+                String item = prefix + "interaction." + j + ".";
+                put(properties, item + "id", interaction.id()); put(properties, item + "date", interaction.date().toString());
+                put(properties, item + "kind", interaction.kind()); put(properties, item + "summary", interaction.summary());
+            }
             for (int fieldIndex = 0; fieldIndex < customFields.size(); fieldIndex++) {
                 put(properties, prefix + "custom." + fieldIndex, contact.customFieldValue(customFields.get(fieldIndex)));
             }
@@ -267,6 +304,7 @@ public class LocalCrmDataRepository implements CrmDataRepository {
             put(properties, prefix + "duration", String.valueOf(task.getDuration()));
             put(properties, prefix + "color", task.getColor());
             put(properties, prefix + "completed", String.valueOf(task.isCompleted()));
+            writeMetadata(properties, prefix, task.metadata());
         }
         properties.setProperty("notes.count", String.valueOf(data.notes().size()));
         for (int i = 0; i < data.notes().size(); i++) {
@@ -289,6 +327,7 @@ public class LocalCrmDataRepository implements CrmDataRepository {
             put(properties, prefix + "previewFontSize", String.valueOf(note.getPreviewFontSize()));
             put(properties, prefix + "previewTextColor", note.getPreviewTextColor());
             put(properties, prefix + "folderId", note.getFolderId());
+            put(properties, prefix + "contactId", note.getContactId());
         }
         properties.setProperty("noteFolders.count", String.valueOf(data.noteFolders().size()));
         for (int i = 0; i < data.noteFolders().size(); i++) {
@@ -302,6 +341,13 @@ public class LocalCrmDataRepository implements CrmDataRepository {
         put(properties, "calendar.viewMode", data.calendarViewMode());
         put(properties, "calendar.zoom", String.valueOf(data.calendarZoom()));
         put(properties, "contacts.quickEdit", String.valueOf(data.contactsQuickEdit()));
+        writeMetadata(properties, "workspace.", data.preferences());
+        if (!data.trash().isEmpty()) {
+            CrmDataSnapshot archived = new CrmDataSnapshot(data.trash().contacts(), data.trash().tasks(),
+                    data.trash().notes(), List.of(), data.selectedDate(), "Day", 1, data.contactCustomFields());
+            Properties deleted = serialize(archived);
+            deleted.stringPropertyNames().forEach(key -> properties.setProperty("trash." + key, deleted.getProperty(key)));
+        }
         return properties;
     }
 
@@ -320,7 +366,37 @@ public class LocalCrmDataRepository implements CrmDataRepository {
             contact.setCustomField(customFields.get(fieldIndex),
                     optionalValue(properties, prefix + "custom." + fieldIndex, ""));
         }
+        int interactionCount = properties.containsKey(prefix + "interactions.count")
+                ? flexibleInteger(properties.getProperty(prefix + "interactions.count"), prefix + "interactions.count") : 0;
+        if (interactionCount < 0 || interactionCount > MAX_RECORDS) throw new IllegalArgumentException("Invalid interaction count");
+        List<ContactInteraction> interactions = new ArrayList<>();
+        for (int i = 0; i < interactionCount; i++) {
+            String item = prefix + "interaction." + i + ".";
+            interactions.add(new ContactInteraction(requiredNonBlank(properties, item + "id"),
+                    LocalDate.parse(requiredNonBlank(properties, item + "date")),
+                    optionalValue(properties, item + "kind", "Note"), requiredNonBlank(properties, item + "summary")));
+        }
+        contact.setInteractions(interactions);
         return contact;
+    }
+
+    private void writeMetadata(Properties properties, String prefix, Map<String, String> values) {
+        properties.setProperty(prefix + "metadata.count", String.valueOf(values.size()));
+        int index = 0;
+        for (var item : new java.util.TreeMap<>(values).entrySet()) {
+            put(properties, prefix + "metadata." + index + ".key", item.getKey());
+            put(properties, prefix + "metadata." + index++ + ".value", item.getValue());
+        }
+    }
+
+    private Map<String, String> readMetadata(Properties properties, String prefix) {
+        String count = properties.getProperty(prefix + "metadata.count", "0");
+        int size = flexibleInteger(count, prefix + "metadata.count");
+        if (size < 0 || size > 1000) throw new IllegalArgumentException("Invalid metadata count");
+        Map<String, String> result = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < size; i++) result.put(requiredNonBlank(properties, prefix + "metadata." + i + ".key"),
+                optionalValue(properties, prefix + "metadata." + i + ".value", ""));
+        return result;
     }
 
     private List<String> readLinkedTaskIds(Properties properties, String prefix) {
@@ -387,7 +463,21 @@ public class LocalCrmDataRepository implements CrmDataRepository {
         }
     }
 
-    Path dataFile(String userId) { return dataDirectory.resolve(userId + ".properties"); }
+    Path dataFile(String userId) {
+        if (userId == null || !userId.matches("[A-Za-z0-9_-]+")) throw new IllegalArgumentException("Invalid account identifier.");
+        return dataDirectory.resolve(userId + ".properties");
+    }
+
+    /** Keeps legacy revisions and quarantine records, replacing only their storage envelope. */
+    public synchronized void migrateProtection(String userId) {
+        Path file = dataFile(userId);
+        for (String suffix : List.of("", ".bak", ".corrupt.properties", ".corrupt.properties.bak"))
+            WorkspaceVaultService.encryptExisting(file.resolveSibling(file.getFileName() + suffix), userId);
+        if (Files.isDirectory(dataDirectory)) try (var entries = Files.list(dataDirectory)) {
+            for (Path temporary : entries.filter(path -> path.getFileName().toString().startsWith(userId + ".properties.")
+                    && path.getFileName().toString().endsWith(".tmp")).toList()) WorkspaceVaultService.encryptExisting(temporary, userId);
+        } catch (IOException failure) { throw new IllegalStateException("Old workspace temporary files could not be protected.", failure); }
+    }
 
     private int requiredInteger(Properties properties, String key) { return flexibleInteger(properties.getProperty(key), key); }
 

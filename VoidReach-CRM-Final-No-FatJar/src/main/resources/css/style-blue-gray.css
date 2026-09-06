@@ -3,6 +3,22 @@
  * Layout, sizing, typography, and component structure remain owned by the base theme.
  */
 .root {
+    -vr-canvas: #1c2635;
+    -vr-surface: #232f41;
+    -vr-sidebar: #172131;
+    -vr-raised: #29364a;
+    -vr-hover: #304058;
+    -vr-border: #39485e;
+    -vr-text: #e6edf8;
+    -vr-muted: #a7b6cc;
+    -vr-accent: #a7c2f7;
+    -vr-primary: #476cba;
+    -vr-primary-hover: #527bcf;
+    -vr-accent-soft: #2d4160;
+    -vr-success: #8acdb8;
+    -vr-warning: #e4c287;
+    -vr-warning-soft: #35332f;
+    -vr-danger: #f0a6b4;
     -fx-background-color: #182337;
     -fx-focus-color: #3f82ed;
 }

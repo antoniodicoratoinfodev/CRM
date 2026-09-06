@@ -87,12 +87,9 @@ public class LoginController {
 
     @FXML private void handleRecovery() {
         String email = recoveryEmail.getText().trim();
-        runAuthTask(recoveryPane, "Generating code…", () -> auth.requestPasswordReset(email), code -> {
-            recoveryEmail.clear();
-            show(resetPane);
-            resetEmail.setText(email);
-            resetMessage.setText("Local code generated. For this demo: " + code + " (valid for 15 minutes).");
-        }, message -> recoveryMessage.setText(message));
+        if (email.isBlank()) { recoveryMessage.setText("Enter your account email."); return; }
+        recoveryEmail.clear(); show(resetPane); resetEmail.setText(email);
+        resetMessage.setText("Use the offline recovery key previously saved from Settings. No email is sent.");
     }
 
     @FXML private void handleReset() {

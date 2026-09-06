@@ -67,7 +67,7 @@ class ThemeServiceTest {
     @Test
     void themeStylesheetsArePackagedAndValid() throws IOException {
         for (String resource : new String[]{"/css/style.css", "/css/style-dark.css",
-                "/css/style-blue-gray.css", "/css/style-gray-blue.css"}) {
+                "/css/style-blue-gray.css", "/css/style-gray-blue.css", "/css/workspace.css", "/css/typography.css"}) {
             URL stylesheet = ThemeService.class.getResource(resource);
             assertNotNull(stylesheet);
 
